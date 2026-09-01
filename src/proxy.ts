@@ -14,7 +14,7 @@ const SESSION_COOKIE = "cv_sid";
 const UTM_COOKIE = "cv_utm";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30일
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const response = NextResponse.next();
 
   if (!request.cookies.get(SESSION_COOKIE)) {
