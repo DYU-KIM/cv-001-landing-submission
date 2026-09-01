@@ -1,4 +1,6 @@
+import HeroStart from "@/components/HeroStart";
 import LandingCta from "@/components/LandingCta";
+import StickyCta from "@/components/StickyCta";
 import { CONTACT_EMAIL, LANDING } from "@/lib/contract";
 
 /**
@@ -30,22 +32,38 @@ export default function LandingPage() {
               {LANDING.headline}
             </h1>
 
-            <p className="mb-9 max-w-[34rem] text-lg leading-relaxed text-muted sm:text-xl">
+            <p className="mb-6 max-w-[34rem] text-lg leading-relaxed text-muted sm:text-xl">
               {LANDING.subhead}
             </p>
 
-            <div className="max-w-[26rem]">
-              <LandingCta trackView />
-              <p className="mt-3 text-center text-sm text-muted">
-                {LANDING.ctaNote}
+            <div className="mb-8 max-w-[30rem] rounded-2xl border border-accent/25 bg-white/70 p-4 backdrop-blur">
+              <p className="text-[1.05rem] leading-relaxed">
+                <b className="font-semibold text-accent">
+                  {LANDING.rewardLine.strong}
+                </b>
+                {LANDING.rewardLine.tail}
               </p>
+              <p className="mt-1.5 text-sm text-muted">
+                {LANDING.rewardLine.note}
+              </p>
+            </div>
+
+            <div id="start">
+              <HeroStart />
             </div>
           </div>
         </section>
 
+        {/* 대상 조건 — 안 맞는 분이 먼저 걸러지도록 위로 올린다 */}
         <div className="mx-auto w-full max-w-[46rem] px-5">
-          {/* 참여 대가 */}
-          <section className="rounded-3xl border border-line bg-soft p-6 sm:p-8">
+          <p className="rounded-2xl bg-soft px-5 py-4 text-sm text-muted">
+            {LANDING.qualification}
+          </p>
+        </div>
+
+        <div className="mx-auto w-full max-w-[46rem] px-5">
+          {/* 왜 무료인가 */}
+          <section className="mt-8 rounded-3xl border border-line bg-soft p-6 sm:p-8">
             <p className="mb-2 text-sm font-semibold text-accent">
               {LANDING.reward.title}
             </p>
@@ -83,6 +101,9 @@ export default function LandingPage() {
                 </li>
               ))}
             </ol>
+            <p className="mt-4 rounded-2xl bg-soft px-5 py-4 text-sm">
+              {LANDING.timeline}
+            </p>
           </Section>
 
           {/* 무엇을 묻는지 */}
@@ -148,9 +169,11 @@ export default function LandingPage() {
             </div>
           </Section>
 
-          {/* 대상 안내 + 데스크톱 CTA */}
+          {/* 최종 CTA */}
           <section className="mb-12 rounded-3xl bg-soft p-6 sm:p-8">
-            <p className="mb-6 text-sm text-muted">{LANDING.qualification}</p>
+            <p className="mb-6 text-center text-lg font-semibold">
+              {LANDING.finalCta}
+            </p>
             <div className="mx-auto max-w-[26rem]">
               <LandingCta />
               <p className="mt-3 text-center text-sm text-muted">
@@ -168,10 +191,7 @@ export default function LandingPage() {
         </div>
       </main>
 
-      {/* 모바일 하단 고정 CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-page/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:hidden">
-        <LandingCta compact />
-      </div>
+      <StickyCta targetId="start" />
     </>
   );
 }
