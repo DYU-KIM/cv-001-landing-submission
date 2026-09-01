@@ -23,7 +23,7 @@ export default function LandingPage() {
           <RouteMotif />
 
           <div className="relative mx-auto w-full max-w-[46rem] px-5 pb-12 pt-14 sm:pt-20">
-            <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-line bg-white/80 px-3.5 py-1.5 text-xs font-medium text-muted backdrop-blur">
+            <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-medium text-muted">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
               {LANDING.eyebrow}
             </p>
@@ -36,7 +36,7 @@ export default function LandingPage() {
               {LANDING.subhead}
             </p>
 
-            <div className="mb-8 max-w-[30rem] rounded-2xl border border-accent/25 bg-white/70 p-4 backdrop-blur">
+            <div className="mb-8 max-w-[30rem] rounded-2xl border border-accent/25 bg-white p-4">
               <p className="text-[1.05rem] leading-relaxed">
                 <b className="font-semibold text-accent">
                   {LANDING.rewardLine.strong}

@@ -26,7 +26,7 @@ export default function StickyCta({ targetId }: { targetId: string }) {
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-10 border-t border-line bg-page/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur transition-transform duration-200 sm:hidden ${
+      className={`fixed inset-x-0 bottom-0 z-10 border-t border-line bg-page p-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-transform duration-200 sm:hidden ${
         visible ? "translate-y-0" : "translate-y-full"
       }`}
     >
