@@ -125,6 +125,25 @@ async function preConsent() {
 
   const landingCsv = await csv("landing");
   check("집계 테이블에 카운터가 쌓인다", landingCsv.includes("landing_viewed_count"));
+
+  // 파기됐거나 만료된 응답을 가리키는 쿠키로 돌아온 경우
+  const stale = await fetch(`${base}/api/step`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: "cv_rid=00000000-0000-0000-0000-000000000000",
+    },
+    body: JSON.stringify({
+      step: "travelContext",
+      values: { experience: ["preparing"], planningScope: ["places"], region: "" },
+    }),
+  });
+  const staleBody = await stale.json().catch(() => ({}));
+  check(
+    "사라진 응답을 가리키는 쿠키는 NO_SESSION 으로 구분된다",
+    stale.status === 401 && staleBody.code === "NO_SESSION",
+    JSON.stringify(staleBody),
+  );
 }
 
 // ---------------------------------------------------------------- 3 · 4 · 5 · 6

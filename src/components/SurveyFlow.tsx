@@ -240,6 +240,7 @@ export default function SurveyFlow() {
   const [saving, setSaving] = useState(false);
   const [restored, setRestored] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [sessionLost, setSessionLost] = useState(false);
   const retry = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -325,10 +326,13 @@ export default function SurveyFlow() {
         const data = (await res.json()) as {
           ok?: boolean;
           message?: string;
+          code?: string;
           fields?: Record<string, string>;
         };
         if (!res.ok || !data.ok) {
           if (data.fields) setErrors(data.fields);
+          // 세션이 사라졌으면 재시도해도 성공할 수 없다.
+          if (data.code === "NO_SESSION") setSessionLost(true);
           setSaveError(data.message ?? "저장하지 못했습니다.");
           return null;
         }
@@ -363,6 +367,22 @@ export default function SurveyFlow() {
     [],
   );
 
+  const restart = () => {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // 무시한다.
+    }
+    setValues(EMPTY);
+    setErrors({});
+    setSaveError(null);
+    setSessionLost(false);
+    setLocked(false);
+    setPhase("problem");
+    setCursor(0);
+    setStep("consent");
+  };
+
   if (!restored) return null;
 
   // ---------------------------------------------------------------- 동의
@@ -375,6 +395,7 @@ export default function SurveyFlow() {
             message={saveError}
             retrying={saving}
             onRetry={() => retry.current?.()}
+            onRestart={sessionLost ? restart : undefined}
           />
         ) : null}
 
@@ -565,6 +586,7 @@ export default function SurveyFlow() {
           message={saveError}
           retrying={saving}
           onRetry={() => retry.current?.()}
+          onRestart={sessionLost ? restart : undefined}
         />
       ) : null}
 

@@ -329,27 +329,44 @@ export function QuietButton({
   );
 }
 
-/** 저장 실패 시 입력을 유지한 채 재시도를 제공한다. (contract Error And Edge States) */
+/**
+ * 저장 실패 시 입력을 유지한 채 재시도를 제공한다. (contract Error And Edge States)
+ *
+ * 다만 조사 세션 자체가 사라진 경우에는 재시도가 성공할 수 없으므로
+ * 다시 시작하는 길만 보여준다.
+ */
 export function SaveError({
   message,
   onRetry,
   retrying,
+  onRestart,
 }: {
   message: string;
   onRetry: () => void;
   retrying: boolean;
+  onRestart?: () => void;
 }) {
   return (
     <div role="alert" className="mb-6 rounded-2xl bg-surface p-5">
       <p className="text-sm text-danger">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        disabled={retrying}
-        className="mt-3 rounded-xl border border-danger px-4 py-2 text-sm font-semibold text-danger disabled:opacity-50"
-      >
-        {retrying ? "다시 저장하는 중…" : "다시 저장"}
-      </button>
+      {onRestart ? (
+        <button
+          type="button"
+          onClick={onRestart}
+          className="mt-3 rounded-xl border border-danger px-4 py-2 text-sm font-semibold text-danger"
+        >
+          처음부터 다시 시작
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="mt-3 rounded-xl border border-danger px-4 py-2 text-sm font-semibold text-danger disabled:opacity-50"
+        >
+          {retrying ? "다시 저장하는 중…" : "다시 저장"}
+        </button>
+      )}
     </div>
   );
 }
