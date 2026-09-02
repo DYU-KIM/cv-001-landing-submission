@@ -25,13 +25,11 @@ export default function LandingPage() {
             {LANDING.headline}
           </h1>
 
-          {LANDING.body.map((line) => (
-            <p key={line} className="mb-4 max-w-[34rem] text-body">
-              {line}
-            </p>
-          ))}
+          <p className="mb-6 max-w-[34rem] text-body">{LANDING.subhead}</p>
 
-          <p className="mt-6 text-sm text-muted">{LANDING.participationNote}</p>
+          <p className="max-w-[34rem] rounded-2xl bg-weak p-5 text-weak-ink">
+            {LANDING.offer}
+          </p>
         </div>
       </section>
 
