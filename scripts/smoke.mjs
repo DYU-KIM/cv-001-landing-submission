@@ -202,6 +202,22 @@ async function preConsent() {
       c.startsWith("cv_rid=") && !c.includes(deadId),
     ),
   );
+
+  // 검수용 세션 초기화는 운영자 키 뒤에 있어야 한다.
+  const openReset = await fetch(`${base}/api/session/reset`);
+  check("인증 없는 세션 초기화는 거부된다", openReset.status === 401);
+
+  const okReset = await fetch(
+    `${base}/api/session/reset?key=${encodeURIComponent(exportKey)}`,
+  );
+  check("운영자 키로는 세션을 초기화할 수 있다", okReset.status === 200);
+  check(
+    "초기화가 응답 쿠키를 지운다",
+    (okReset.headers.getSetCookie?.() ?? []).some(
+      (c) => c.startsWith("cv_rid=") && /max-age=0|expires=/i.test(c),
+    ),
+    (okReset.headers.getSetCookie?.() ?? []).join(" | "),
+  );
 }
 
 // ---------------------------------------------------------------- 3 · 4 · 5 · 6

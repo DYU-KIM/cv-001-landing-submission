@@ -76,6 +76,17 @@ type QKey =
 
 type Screen = { group: Group; key: QKey };
 
+/** `GET /api/response` 가 돌려주는 본인 응답의 읽기 전용 사본. */
+type ServerResponse = {
+  problemLocked: boolean;
+  travelExperience: string[] | null;
+  planningScope: string[] | null;
+  travelRegion: string | null;
+  incType: string | null;
+  srcFirst: string | null;
+  impOutcomes: string[] | null;
+};
+
 type Values = {
   consent: boolean;
   experience: string[];
@@ -234,6 +245,7 @@ export default function SurveyFlow() {
   const [restored, setRestored] = useState(false);
   const [locked, setLocked] = useState(false);
   const [sessionLost, setSessionLost] = useState(false);
+  const [server, setServer] = useState<ServerResponse | null>(null);
   const retry = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -259,7 +271,13 @@ export default function SurveyFlow() {
     setRestored(true);
   }, []);
 
-  // 새로고침 후에도 서버 상태가 잠금이면 문제응답 화면으로 돌아가지 않는다.
+  /**
+   * 서버에 저장된 응답을 화면의 기준으로 삼는다.
+   *
+   * 브라우저 임시 상태는 새로고침·재방문에서 비어 있을 수 있다.
+   * 샘플 신청 대상 판정을 그 값으로 하면, 준비 중이라고 답한 사람에게도
+   * 신청 버튼이 사라진다.
+   */
   useEffect(() => {
     if (!restored || step === "consent") return;
     let cancelled = false;
@@ -267,8 +285,9 @@ export default function SurveyFlow() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.ok) return;
-        const server = data.response as { problemLocked: boolean };
-        if (server.problemLocked) {
+        const row = data.response as ServerResponse;
+        setServer(row);
+        if (row.problemLocked) {
           setLocked(true);
           setStep((current) =>
             current === "q" && phase === "problem" ? "solution" : current,
@@ -371,6 +390,7 @@ export default function SurveyFlow() {
     setSaveError(null);
     setSessionLost(false);
     setLocked(false);
+    setServer(null);
     setPhase("problem");
     setCursor(0);
     setStep("consent");
@@ -463,6 +483,7 @@ export default function SurveyFlow() {
   if (step === "solution") {
     return (
       <SolutionReveal
+        server={server}
         values={values}
         onRequest={() => {
           void fetch("/api/event", {
@@ -961,10 +982,12 @@ function Inquiry() {
  * 제출한 답변은 읽기 전용으로만 다시 볼 수 있다. (Q-057)
  */
 function SolutionReveal({
+  server,
   values,
   onRequest,
   onFinish,
 }: {
+  server: ServerResponse | null;
   values: Values;
   onRequest: () => void;
   onFinish: () => void;
@@ -975,7 +998,17 @@ function SolutionReveal({
     void fetch("/api/solution", { method: "POST" });
   }, []);
 
-  const upcoming = hasUpcomingTrip(values.experience);
+  // 저장된 답이 기준이다. 아직 못 받아왔을 때만 방금 입력한 값을 쓴다.
+  const answered = {
+    experience: server?.travelExperience ?? values.experience,
+    planningScope: server?.planningScope ?? values.planningScope,
+    region: server?.travelRegion ?? values.region,
+    incType: server?.incType ?? values.incType,
+    srcFirst: server?.srcFirst ?? values.srcFirst,
+    impOutcomes: server?.impOutcomes ?? values.impOutcomes,
+  };
+
+  const upcoming = hasUpcomingTrip(answered.experience);
 
   return (
     <Shell>
@@ -1013,20 +1046,20 @@ function SolutionReveal({
           <div className="mt-4 grid gap-3 rounded-2xl bg-surface p-5 text-sm">
             <p className="text-muted">{SOLUTION.submittedNote}</p>
             <SubmittedRow label="여행 경험">
-              {labelsOf(TRAVEL_EXPERIENCE, values.experience)}
+              {labelsOf(TRAVEL_EXPERIENCE, answered.experience)}
             </SubmittedRow>
             <SubmittedRow label="직접 정한 것">
-              {labelsOf(PLANNING_SCOPE, values.planningScope)}
+              {labelsOf(PLANNING_SCOPE, answered.planningScope)}
             </SubmittedRow>
-            <SubmittedRow label="도시·지역">{values.region || "—"}</SubmittedRow>
+            <SubmittedRow label="도시·지역">{answered.region || "—"}</SubmittedRow>
             <SubmittedRow label="상황">
-              {values.incType ? labelOf(INC_TYPE, values.incType) : "—"}
+              {answered.incType ? labelOf(INC_TYPE, answered.incType) : "—"}
             </SubmittedRow>
             <SubmittedRow label="첫 정보원">
-              {values.srcFirst ? labelOf(SRC_OPTIONS, values.srcFirst) : "—"}
+              {answered.srcFirst ? labelOf(SRC_OPTIONS, answered.srcFirst) : "—"}
             </SubmittedRow>
             <SubmittedRow label="달라진 것">
-              {labelsOf(IMP_OUTCOME, values.impOutcomes)}
+              {labelsOf(IMP_OUTCOME, answered.impOutcomes)}
             </SubmittedRow>
           </div>
         ) : null}
