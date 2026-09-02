@@ -67,7 +67,7 @@ export type SampleRequestRow = {
   focus: string[];
   focus_other: string | null;
   note: string | null;
-  needed_by: string;
+  needed_by: string | null;
   created_at: string;
 };
 
@@ -401,7 +401,7 @@ export async function saveSampleRequest(input: {
   focus: string[];
   focusOther: string | null;
   note: string | null;
-  neededBy: string;
+  neededBy: string | null;
 }): Promise<void> {
   const row: SampleRequestRow = {
     request_id: randomUUID(),

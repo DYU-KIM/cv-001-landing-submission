@@ -466,14 +466,50 @@ async function validationRules() {
     step: "impact",
     values: { impOutcomes: ["kept"], impOutcomeOther: "", impExtraTime: "", altSufficientNote: "" },
   });
-  const blocked = await s3.post("/api/sample", {
+  // 여행 시점으로 신청을 막지 않는다. 필요 시점은 비워둘 수 있다.
+  const openRequest = await s3.post("/api/sample", {
     focus: ["hours"],
     focusOther: "",
     note: "",
-    neededBy: new Date(Date.now() + 864e5).toISOString().slice(0, 10),
+    neededBy: "",
   });
-  check("예정 여행이 없으면 샘플 신청이 막힌다", blocked.status === 403);
-  check("그래도 문제조사는 완료 상태로 남는다", (await s3.get("/api/response")).data.response?.status === "problem_completed");
+  check(
+    "예정 여행이 없어도 샘플을 신청할 수 있다",
+    openRequest.data.next === "contact",
+    JSON.stringify(openRequest.data),
+  );
+  check(
+    "그래도 문제조사는 완료 상태로 남는다",
+    (await s3.get("/api/response")).data.response?.status === "problem_completed",
+  );
+
+  // 준비 중이라고 답한 경우에는 필요 시점을 받는다.
+  const s4 = session();
+  await s4.post("/api/consent", { consent: true, utm: {} });
+  await s4.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["preparing"], planningScope: ["places"], region: "" },
+  });
+  await s4.post("/api/step", {
+    step: "incident",
+    values: { incType: "none", incDescription: "", incTiming: "before" },
+  });
+  await s4.post("/api/step", {
+    step: "sources",
+    values: { srcFirst: "instagram", srcNext: ["no_more"], srcMoveReasons: ["enough"], srcMoveReasonOther: "" },
+  });
+  await s4.post("/api/step", {
+    step: "impact",
+    values: { impOutcomes: ["kept"], impOutcomeOther: "", impExtraTime: "", altSufficientNote: "" },
+  });
+  const missingDate = await s4.post("/api/sample", {
+    focus: ["hours"], focusOther: "", note: "", neededBy: "",
+  });
+  check(
+    "준비 중이면 필요 시점을 비울 수 없다",
+    missingDate.status === 400 && !!missingDate.data.fields?.neededBy,
+    JSON.stringify(missingDate.data),
+  );
 }
 
 // ---------------------------------------------------------------- 저장소 분리·이벤트

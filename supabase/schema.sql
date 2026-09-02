@@ -150,7 +150,7 @@ create table if not exists sample_request (
   focus          text[] not null,
   focus_other    text,
   note           text,
-  needed_by      date not null,
+  needed_by      date,          -- 예정 여행이 없는 신청자는 비워둘 수 있다
   created_at     timestamptz not null default now()
 );
 

@@ -583,7 +583,11 @@ export default function SurveyFlow() {
   };
 
   const q = QUESTIONS[current.key];
-  const hint = hintFor(current.key, values);
+  const hint = hintFor(current.key, values, server);
+  const optional =
+    q.optional ||
+    (current.key === "neededBy" &&
+      !hasUpcomingTrip(server?.travelExperience ?? values.experience));
   const submitLabel =
     current.group === "contact"
       ? CONTACT_CONSENT.submit
@@ -619,7 +623,7 @@ export default function SurveyFlow() {
 
       <h1 className="mb-2 text-2xl font-semibold leading-9">
         {q.label}
-        {q.optional ? (
+        {optional ? (
           <span className="ml-2 align-middle text-sm font-normal text-muted">
             선택
           </span>
@@ -681,7 +685,7 @@ const QUESTIONS: Record<QKey, { label: string; hint?: string; optional?: boolean
     hint: "여러 상황이 떠오르면 가장 기억에 남는 한 가지만 골라주세요.",
   },
   incDescription: {
-    label: "그때 무엇을 정하려고 했는지 적어주세요.",
+    label: "그 상황에서 무엇을 정하려고 했는지 적어주세요.",
     hint: INC_DESCRIPTION_EXAMPLE,
   },
   incTiming: { label: "그 상황은 언제였나요?" },
@@ -706,7 +710,7 @@ const QUESTIONS: Record<QKey, { label: string; hint?: string; optional?: boolean
     optional: true,
   },
   altSufficientNote: {
-    label: "지금 쓰신 무료 정보만으로 충분했던 부분이 있나요?",
+    label: "지금까지 쓰신 무료 정보만으로 충분했던 부분이 있나요?",
     hint: "없으면 비워두고 넘어가셔도 됩니다.",
     optional: true,
   },
@@ -958,8 +962,32 @@ function OtherInput({
  * 앞 답변을 가리키는 질문은 그 답을 화면에 다시 보여준다.
  * `첫 번째 정보`처럼 지시대명사만 있으면 응답자가 무엇을 가리키는지 기억해야 한다.
  */
-function hintFor(key: QKey, v: Values): string | undefined {
+function hintFor(
+  key: QKey,
+  v: Values,
+  server: ServerResponse | null,
+): string | undefined {
   const first = v.srcFirst ? labelOf(SRC_OPTIONS, v.srcFirst) : null;
+
+  if (key === "incDescription" && v.incType) {
+    const situation = labelOf(INC_TYPE, v.incType);
+    return `앞에서 고르신 ‘${situation}’ 상황을 말합니다. 그때 어떤 장소·조건을 두고 무엇을 정하려 했는지 적어주세요. ${INC_DESCRIPTION_EXAMPLE}`;
+  }
+
+  if (key === "altSufficientNote") {
+    const used = [v.srcFirst, ...v.srcNext]
+      .filter((x) => x && x !== SRC_NEXT_NONE)
+      .map((x) => labelOf(SRC_OPTIONS, x as string));
+    if (used.length > 0) {
+      return `앞에서 ${used.map((u) => `‘${u}’`).join(", ")}을(를) 확인하셨다고 답하셨습니다. 그 무료 정보만으로도 충분했던 부분이 있다면 적어주세요. 없으면 비워두셔도 됩니다.`;
+    }
+  }
+
+  if (key === "neededBy") {
+    return hasUpcomingTrip(server?.travelExperience ?? v.experience)
+      ? "여행 시기에 맞춰 만들기 때문에 필요한 시점을 알려주세요."
+      : "예정된 여행이 없으시면 비워두셔도 됩니다.";
+  }
 
   if (key === "srcNext" && first) {
     return `가장 먼저 확인하신 곳은 ‘${first}’였습니다. 그 뒤에 확인한 곳을 순서대로 눌러주세요.`;
@@ -1032,19 +1060,17 @@ function SolutionReveal({
         {SOLUTION.boundary}
       </p>
 
-      {upcoming ? (
-        <div className="grid gap-3">
-          <PrimaryButton onClick={onRequest}>{SOLUTION.cta}</PrimaryButton>
-          <QuietButton onClick={onFinish}>{SOLUTION.secondary}</QuietButton>
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          <p className="rounded-2xl bg-weak p-5 text-sm text-weak-ink">
-            {SOLUTION.noUpcomingTrip}
-          </p>
-          <QuietButton onClick={onFinish}>조사 마치기</QuietButton>
-        </div>
+      {/* 여행 시점으로 신청을 막지 않는다. 예정이 없는 분께는 우선순위만 미리 알린다. */}
+      {upcoming ? null : (
+        <p className="mb-4 rounded-2xl bg-weak p-5 text-sm text-weak-ink">
+          {SOLUTION.noUpcomingTripNote}
+        </p>
       )}
+
+      <div className="grid gap-3">
+        <PrimaryButton onClick={onRequest}>{SOLUTION.cta}</PrimaryButton>
+        <QuietButton onClick={onFinish}>{SOLUTION.secondary}</QuietButton>
+      </div>
 
       <div className="mt-8 border-t border-line pt-6">
         <button

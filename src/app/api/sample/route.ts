@@ -13,15 +13,17 @@ export async function POST(request: Request) {
       code: "PROBLEM_RESPONSE_NOT_COMPLETED",
     });
   }
-  if (!hasUpcomingTrip(row.travel_experience)) {
-    return fail(403, "현재는 일본 여행을 준비 중인 분에게만 샘플을 제작하고 있습니다.", {
-      code: "SAMPLE_NOT_AVAILABLE",
-    });
-  }
-
   const parsed = sampleSchema.safeParse(await readJson(request));
   if (!parsed.success) {
     return fail(400, "입력을 확인해주세요.", { fields: firstIssue(parsed.error) });
+  }
+
+  // 여행 시점으로 신청을 막지는 않는다. 다만 준비 중이라고 답했으면
+  // 제작 우선순위를 정할 수 있도록 필요 시점을 받는다.
+  if (hasUpcomingTrip(row.travel_experience) && !parsed.data.neededBy) {
+    return fail(400, "입력을 확인해주세요.", {
+      fields: { neededBy: "여행 준비 중이시라면 필요한 시점을 알려주세요." },
+    });
   }
 
   await saveSampleRequest({
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
     focus: parsed.data.focus,
     focusOther: parsed.data.focusOther || null,
     note: parsed.data.note || null,
-    neededBy: parsed.data.neededBy,
+    neededBy: parsed.data.neededBy || null,
   });
 
   await updateResponse(row.response_id, {

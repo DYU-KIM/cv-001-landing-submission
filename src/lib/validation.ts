@@ -252,7 +252,11 @@ export const sampleSchema = z
       .max(SMP_FOCUS_MAX, `최대 ${SMP_FOCUS_MAX}개까지 선택할 수 있습니다.`),
     focusOther: z.string().optional().default(""),
     note: optionalText(200),
-    neededBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 선택해주세요."),
+    /**
+     * 예정 여행이 없는 분도 신청할 수 있으므로 비워둘 수 있다.
+     * 여행을 준비 중이라고 답한 경우에만 서버가 필수로 확인한다.
+     */
+    neededBy: z.string().optional().default(""),
   })
   .superRefine((v, ctx) => {
     if (v.focus.includes("other")) {
@@ -264,6 +268,15 @@ export const sampleSchema = z
           message: "기타 조건을 80자 이내로 적어주세요.",
         });
       }
+    }
+    if (!v.neededBy) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v.neededBy)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["neededBy"],
+        message: "날짜를 선택해주세요.",
+      });
+      return;
     }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
