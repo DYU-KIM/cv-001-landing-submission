@@ -133,15 +133,12 @@ const DRAFT_KEY = "cv001.draft";
  */
 function screensFor(values: Values, phase: Phase): Screen[] {
   if (phase === "sample") {
-    const screens: Screen[] = [{ group: "sample", key: "focus" }];
-    if (values.focus.includes("other"))
-      screens.push({ group: "sample", key: "focusOther" });
-    screens.push(
+    return [
+      { group: "sample", key: "focus" },
       { group: "sample", key: "note" },
       { group: "sample", key: "neededBy" },
       { group: "contact", key: "contact" },
-    );
-    return screens;
+    ];
   }
 
   const screens: Screen[] = [
@@ -158,12 +155,8 @@ function screensFor(values: Values, phase: Phase): Screen[] {
     { group: "sources", key: "srcNext" },
     { group: "sources", key: "srcMoveReasons" },
   );
-  if (values.srcMoveReasons.includes("other"))
-    screens.push({ group: "sources", key: "srcMoveReasonOther" });
-  screens.push({ group: "impact", key: "impOutcomes" });
-  if (values.impOutcomes.includes("other"))
-    screens.push({ group: "impact", key: "impOutcomeOther" });
   screens.push(
+    { group: "impact", key: "impOutcomes" },
     { group: "impact", key: "impExtraTime" },
     { group: "impact", key: "altSufficientNote" },
   );
@@ -557,6 +550,7 @@ export default function SurveyFlow() {
   };
 
   const q = QUESTIONS[current.key];
+  const hint = hintFor(current.key, values);
   const submitLabel =
     current.group === "contact"
       ? CONTACT_CONSENT.submit
@@ -598,7 +592,7 @@ export default function SurveyFlow() {
           </span>
         ) : null}
       </h1>
-      {q.hint ? <p className="mb-6 text-body">{q.hint}</p> : <div className="mb-6" />}
+      {hint ? <p className="mb-6 text-body">{hint}</p> : <div className="mb-6" />}
 
       <div className="mb-8">{renderInput(current.key, values, set)}</div>
 
@@ -779,39 +773,43 @@ function renderInput(
       );
     case "srcMoveReasons":
       return (
-        <CheckboxGroup
-          options={SRC_MOVE_REASON}
-          values={v.srcMoveReasons}
-          onChange={(x) => set("srcMoveReasons", x)}
-          max={SRC_REASON_MAX}
-        />
+        <>
+          <CheckboxGroup
+            options={SRC_MOVE_REASON}
+            values={v.srcMoveReasons}
+            onChange={(x) => set("srcMoveReasons", x)}
+            max={SRC_REASON_MAX}
+          />
+          <OtherInput
+            show={v.srcMoveReasons.includes("other")}
+            label="어떤 이유였는지 적어주세요."
+            value={v.srcMoveReasonOther}
+            onChange={(x) => set("srcMoveReasonOther", x)}
+            max={120}
+          />
+        </>
       );
     case "srcMoveReasonOther":
-      return (
-        <TextArea
-          value={v.srcMoveReasonOther}
-          onChange={(x) => set("srcMoveReasonOther", x)}
-          max={120}
-          rows={3}
-        />
-      );
+      return null;
     case "impOutcomes":
       return (
-        <CheckboxGroup
-          options={IMP_OUTCOME}
-          values={v.impOutcomes}
-          onChange={(x) => set("impOutcomes", x)}
-        />
+        <>
+          <CheckboxGroup
+            options={IMP_OUTCOME}
+            values={v.impOutcomes}
+            onChange={(x) => set("impOutcomes", x)}
+          />
+          <OtherInput
+            show={v.impOutcomes.includes("other")}
+            label="어떤 내용인지 적어주세요."
+            value={v.impOutcomeOther}
+            onChange={(x) => set("impOutcomeOther", x)}
+            max={120}
+          />
+        </>
       );
     case "impOutcomeOther":
-      return (
-        <TextArea
-          value={v.impOutcomeOther}
-          onChange={(x) => set("impOutcomeOther", x)}
-          max={120}
-          rows={3}
-        />
-      );
+      return null;
     case "impExtraTime":
       return (
         <RadioGroup
@@ -832,21 +830,25 @@ function renderInput(
       );
     case "focus":
       return (
-        <CheckboxGroup
-          options={SMP_FOCUS}
-          values={v.focus}
-          onChange={(x) => set("focus", x)}
-          max={SMP_FOCUS_MAX}
-        />
+        <>
+          <CheckboxGroup
+            options={SMP_FOCUS}
+            values={v.focus}
+            onChange={(x) => set("focus", x)}
+            max={SMP_FOCUS_MAX}
+          />
+          <OtherInput
+            show={v.focus.includes("other")}
+            label="어떤 조건인지 적어주세요."
+            value={v.focusOther}
+            onChange={(x) => set("focusOther", x)}
+            max={80}
+            single
+          />
+        </>
       );
     case "focusOther":
-      return (
-        <TextInput
-          value={v.focusOther}
-          onChange={(x) => set("focusOther", x)}
-          max={80}
-        />
-      );
+      return null;
     case "note":
       return (
         <TextArea
@@ -885,6 +887,54 @@ function renderInput(
         </div>
       );
   }
+}
+
+/**
+ * `기타`를 고른 자리에서 바로 적게 한다.
+ * 별도 화면으로 넘기면 방금 무엇을 골랐는지 안 보여서 흐름이 끊긴다.
+ */
+function OtherInput({
+  show,
+  label,
+  value,
+  onChange,
+  max,
+  single,
+}: {
+  show: boolean;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  max: number;
+  single?: boolean;
+}) {
+  if (!show) return null;
+  return (
+    <div className="mt-3 rounded-2xl bg-surface p-4">
+      <p className="mb-2 text-sm font-semibold">{label}</p>
+      {single ? (
+        <TextInput value={value} onChange={onChange} max={max} />
+      ) : (
+        <TextArea value={value} onChange={onChange} max={max} rows={3} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 앞 답변을 가리키는 질문은 그 답을 화면에 다시 보여준다.
+ * `첫 번째 정보`처럼 지시대명사만 있으면 응답자가 무엇을 가리키는지 기억해야 한다.
+ */
+function hintFor(key: QKey, v: Values): string | undefined {
+  const first = v.srcFirst ? labelOf(SRC_OPTIONS, v.srcFirst) : null;
+
+  if (key === "srcNext" && first) {
+    return `가장 먼저 확인하신 곳은 ‘${first}’였습니다. 그 뒤에 확인한 곳을 순서대로 눌러주세요.`;
+  }
+  if (key === "srcMoveReasons" && first) {
+    return `여기서 ‘첫 번째 정보’는 가장 먼저 확인하신 ‘${first}’에서 얻은 정보입니다. 그것만으로 충분했다면 그렇게 골라주셔도 됩니다.`;
+  }
+  return QUESTIONS[key].hint;
 }
 
 // ------------------------------------------------------------------ 공통 틀
