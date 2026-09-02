@@ -117,7 +117,9 @@ async function saveSources(row: SurveyResponse, values: unknown) {
   }
   await updateResponse(row.response_id, {
     src_first: parsed.data.srcFirst,
+    src_first_other: parsed.data.srcFirstOther || null,
     src_next: parsed.data.srcNext,
+    src_next_other: parsed.data.srcNextOther || null,
     src_move_reasons: parsed.data.srcMoveReasons,
     src_move_reason_other: parsed.data.srcMoveReasonOther || null,
     last_step: "sources",

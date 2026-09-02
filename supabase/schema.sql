@@ -114,7 +114,9 @@ create table if not exists survey_response (
 
   -- SF-03 정보원
   src_first             text,
+  src_first_other       text,
   src_next              text[],
+  src_next_other        text,
   src_move_reasons      text[],
   src_move_reason_other text,
 

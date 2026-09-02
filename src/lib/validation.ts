@@ -149,6 +149,7 @@ export type IncidentInput = z.infer<typeof incidentSchema>;
 export const sourcesSchema = z
   .object({
     srcFirst: z.enum(values(SRC_OPTIONS), { message: "한 가지를 선택해주세요." }),
+    srcFirstOther: z.string().optional().default(""),
     srcNext: z
       .array(z.enum([...values(SRC_OPTIONS), SRC_NEXT_NONE]))
       .max(SRC_NEXT_MAX, `최대 ${SRC_NEXT_MAX}개까지 선택할 수 있습니다.`)
@@ -157,6 +158,7 @@ export const sourcesSchema = z
       .array(z.enum(values(SRC_MOVE_REASON)))
       .min(1, "하나 이상 선택해주세요.")
       .max(SRC_REASON_MAX, `최대 ${SRC_REASON_MAX}개까지 선택할 수 있습니다.`),
+    srcNextOther: z.string().optional().default(""),
     srcMoveReasonOther: z.string().optional().default(""),
   })
   .superRefine((v, ctx) => {
@@ -190,6 +192,26 @@ export const sourcesSchema = z
         message:
           "‘첫 번째 정보만으로 충분했다’는 부족했던 이유와 함께 선택할 수 없습니다.",
       });
+    }
+    if (v.srcFirst === "other") {
+      const n = graphemeLength(v.srcFirstOther);
+      if (n < 1 || n > 80) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["srcFirstOther"],
+          message: "어디에서 찾으셨는지 80자 이내로 적어주세요.",
+        });
+      }
+    }
+    if (v.srcNext.includes("other")) {
+      const n = graphemeLength(v.srcNextOther);
+      if (n < 1 || n > 80) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["srcNextOther"],
+          message: "어디에서 찾으셨는지 80자 이내로 적어주세요.",
+        });
+      }
     }
     if (v.srcMoveReasons.includes("other")) {
       const n = graphemeLength(v.srcMoveReasonOther);

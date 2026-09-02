@@ -96,7 +96,9 @@ type Values = {
   incDescription: string;
   incTiming: string;
   srcFirst: string;
+  srcFirstOther: string;
   srcNext: string[];
+  srcNextOther: string;
   srcMoveReasons: string[];
   srcMoveReasonOther: string;
   impOutcomes: string[];
@@ -120,7 +122,9 @@ const EMPTY: Values = {
   incDescription: "",
   incTiming: "",
   srcFirst: "",
+  srcFirstOther: "",
   srcNext: [],
+  srcNextOther: "",
   srcMoveReasons: [],
   srcMoveReasonOther: "",
   impOutcomes: [],
@@ -174,6 +178,18 @@ function screensFor(values: Values, phase: Phase): Screen[] {
   return screens;
 }
 
+/**
+ * 한 화면에 함께 렌더링되는 `기타` 서술 필드.
+ * 화면 안의 오류를 그 화면에서 막지 않으면 다음 단계로 넘어간 뒤에야 거절당한다.
+ */
+const COMPANION_FIELD: Partial<Record<QKey, string>> = {
+  srcFirst: "srcFirstOther",
+  srcNext: "srcNextOther",
+  srcMoveReasons: "srcMoveReasonOther",
+  impOutcomes: "impOutcomeOther",
+  focus: "focusOther",
+};
+
 const GROUP_SCHEMA = {
   travelContext: travelContextSchema,
   incident: incidentSchema,
@@ -200,7 +216,9 @@ function groupValues(group: Group, v: Values): Record<string, unknown> {
     case "sources":
       return {
         srcFirst: v.srcFirst,
+        srcFirstOther: v.srcFirstOther,
         srcNext: v.srcNext,
+        srcNextOther: v.srcNextOther,
         srcMoveReasons: v.srcMoveReasons,
         srcMoveReasonOther: v.srcMoveReasonOther,
       };
@@ -527,8 +545,14 @@ export default function SurveyFlow() {
         setErrors(issues);
         return;
       }
-      if (issues[current.key]) {
-        setErrors({ [current.key]: issues[current.key] });
+      const companion = COMPANION_FIELD[current.key];
+      const blocking = issues[current.key]
+        ? { [current.key]: issues[current.key] }
+        : companion && issues[companion]
+          ? { [companion]: issues[companion] }
+          : null;
+      if (blocking) {
+        setErrors(blocking);
         return;
       }
     }
@@ -633,9 +657,9 @@ export default function SurveyFlow() {
 
       <div className="mb-8">{renderInput(current.key, values, set)}</div>
 
-      {errors[current.key] ? (
+      {errors[current.key] || errors[COMPANION_FIELD[current.key] ?? ""] ? (
         <p role="alert" className="mb-4 text-sm text-danger">
-          {errors[current.key]}
+          {errors[current.key] ?? errors[COMPANION_FIELD[current.key] ?? ""]}
         </p>
       ) : null}
       {isLastOfGroup && Object.keys(errors).some((k) => k !== current.key) ? (
@@ -788,16 +812,27 @@ function renderInput(
       );
     case "srcFirst":
       return (
-        <RadioGroup
-          name="srcFirst"
-          options={SRC_OPTIONS}
-          value={v.srcFirst}
-          onChange={(x) => set("srcFirst", x)}
-        />
+        <>
+          <RadioGroup
+            name="srcFirst"
+            options={SRC_OPTIONS}
+            value={v.srcFirst}
+            onChange={(x) => set("srcFirst", x)}
+          />
+          <OtherInput
+            show={v.srcFirst === "other"}
+            label="어디에서 찾으셨는지 적어주세요."
+            value={v.srcFirstOther}
+            onChange={(x) => set("srcFirstOther", x)}
+            max={80}
+            single
+          />
+        </>
       );
     case "srcNext":
       return (
-        <OrderedPicker
+        <>
+          <OrderedPicker
           options={[
             ...SRC_OPTIONS.filter((o) => o.value !== v.srcFirst),
             { value: SRC_NEXT_NONE, label: SRC_NEXT_NONE_LABEL },
@@ -807,6 +842,15 @@ function renderInput(
           max={SRC_NEXT_MAX}
           exclusive={SRC_NEXT_NONE}
         />
+          <OtherInput
+            show={v.srcNext.includes("other")}
+            label="어디에서 찾으셨는지 적어주세요."
+            value={v.srcNextOther}
+            onChange={(x) => set("srcNextOther", x)}
+            max={80}
+            single
+          />
+        </>
       );
     case "srcMoveReasons":
       return (
@@ -970,6 +1014,9 @@ function hintFor(
   const first = v.srcFirst ? labelOf(SRC_OPTIONS, v.srcFirst) : null;
 
   if (key === "incDescription" && v.incType) {
+    if (v.incType === "other") {
+      return `앞에서 ‘기타’를 고르셨습니다. 어떤 상황이었고 무엇을 정하려 했는지 함께 적어주세요. ${INC_DESCRIPTION_EXAMPLE}`;
+    }
     const situation = labelOf(INC_TYPE, v.incType);
     return `앞에서 고르신 ‘${situation}’ 상황을 말합니다. 그때 어떤 장소·조건을 두고 무엇을 정하려 했는지 적어주세요. ${INC_DESCRIPTION_EXAMPLE}`;
   }

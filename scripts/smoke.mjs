@@ -399,6 +399,40 @@ async function validationRules() {
   });
   check("첫 출처 중복 선택 거부", dup.status === 400);
 
+  const firstOther = await s.post("/api/step", {
+    step: "sources",
+    values: {
+      srcFirst: "other",
+      srcFirstOther: "",
+      srcNext: ["no_more"],
+      srcNextOther: "",
+      srcMoveReasons: ["enough"],
+      srcMoveReasonOther: "",
+    },
+  });
+  check(
+    "첫 출처 기타는 서술이 필요하다",
+    firstOther.status === 400 && !!firstOther.data.fields?.srcFirstOther,
+    JSON.stringify(firstOther.data),
+  );
+
+  const nextOther = await s.post("/api/step", {
+    step: "sources",
+    values: {
+      srcFirst: "naver_blog",
+      srcFirstOther: "",
+      srcNext: ["other"],
+      srcNextOther: "",
+      srcMoveReasons: ["outdated"],
+      srcMoveReasonOther: "",
+    },
+  });
+  check(
+    "후속 출처 기타도 서술이 필요하다",
+    nextOther.status === 400 && !!nextOther.data.fields?.srcNextOther,
+    JSON.stringify(nextOther.data),
+  );
+
   const exclusive = await s.post("/api/step", {
     step: "sources",
     values: {

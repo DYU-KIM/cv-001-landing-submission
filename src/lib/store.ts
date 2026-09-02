@@ -52,7 +52,9 @@ export type SurveyResponse = {
   inc_description: string | null;
   inc_timing: string | null;
   src_first: string | null;
+  src_first_other: string | null;
   src_next: string[] | null;
+  src_next_other: string | null;
   src_move_reasons: string[] | null;
   src_move_reason_other: string | null;
   imp_outcomes: string[] | null;
@@ -287,7 +289,9 @@ export async function createResponse(
     inc_description: null,
     inc_timing: null,
     src_first: null,
+    src_first_other: null,
     src_next: null,
+    src_next_other: null,
     src_move_reasons: null,
     src_move_reason_other: null,
     imp_outcomes: null,
