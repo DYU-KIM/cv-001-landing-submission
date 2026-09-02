@@ -9,11 +9,27 @@
  * EXPORT_KEY 가 있으면 CSV·집계 검증까지 수행한다.
  */
 
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 
 const base = process.argv[2] ?? "http://localhost:3000";
-const exportKey = process.env.EXPORT_KEY ?? "dev-export-key";
+
+/** 운영자 키는 환경변수 → .env.local 순으로 찾는다. */
+function readExportKey() {
+  if (process.env.EXPORT_KEY) return process.env.EXPORT_KEY;
+  try {
+    const line = readFileSync(".env.local", "utf8")
+      .split(String.fromCharCode(10))
+      .map((l) => l.trim())
+      .find((l) => l.startsWith("EXPORT_KEY="));
+    if (line) return line.slice("EXPORT_KEY=".length).trim();
+  } catch {
+    // 파일이 없으면 기본값으로 넘어간다.
+  }
+  return "dev-export-key";
+}
+
+const exportKey = readExportKey();
 const DEV_STORE = path.join(process.cwd(), ".data", "dev-store.json");
 
 let passed = 0;
