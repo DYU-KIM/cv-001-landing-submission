@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node scripts/smoke.mjs",
-    "test:sql": "node scripts/verify-sql.mjs"
+    "test:sql": "node scripts/verify-sql.mjs",
+    "test:live": "node scripts/verify-live-retention.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

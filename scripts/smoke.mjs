@@ -86,6 +86,41 @@ const csv = async (dataset) => {
   return res.status === 200 ? res.text() : "";
 };
 
+/** 따옴표를 고려한 최소 CSV 행 분해. */
+function splitRow(row) {
+  const out = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < row.length; i += 1) {
+    const c = row[i];
+    if (quoted) {
+      if (c === '"' && row[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") {
+      out.push(field);
+      field = "";
+    } else field += c;
+  }
+  out.push(field);
+  return out;
+}
+
+/**
+ * 열 이름으로 값을 뽑는다.
+ * 개발 파일 저장소와 Supabase 의 열 순서가 달라 위치로 읽으면 안 된다.
+ */
+function column(text, name) {
+  const lines = text.replace(/^﻿/, "").trim().split("\n");
+  if (lines.length < 2) return [];
+  const index = splitRow(lines[0]).indexOf(name);
+  if (index < 0) return [];
+  return lines.slice(1).map((row) => splitRow(row)[index]);
+}
+
 const REGION = "교토·오사카";
 const INCIDENT =
   "11월에 교토 외곽 카페가 화요일에 문을 여는지, 대중교통으로 갈 수 있는지 결정하려고 했다.";
@@ -435,11 +470,7 @@ async function separationAndEvents() {
   check("샘플 CSV에 이메일 없음", !samples.includes("smoke-test@example.com"));
 
   const events = await csv("events");
-  const names = events
-    .trim()
-    .split("\n")
-    .slice(1)
-    .map((row) => row.split(",")[1]);
+  const names = column(events, "event");
   check(
     "계약에 없는 이벤트가 기록되지 않는다",
     names.every((n) => !n || ALLOWED_EVENTS.has(n)),
@@ -596,7 +627,7 @@ async function fulfillment() {
   const id = (await s.get("/api/response")).status === 200 ? null : null;
 
   const responses = await csv("responses");
-  const firstId = responses.trim().split("\n")[1]?.split(",")[0];
+  const firstId = column(responses, "response_id")[0];
   if (!firstId) {
     skip("운영 상태 기록", "대상 응답이 없어 건너뜀");
     return;
