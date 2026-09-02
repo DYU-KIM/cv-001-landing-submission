@@ -74,7 +74,6 @@ export default function LandingPage() {
             </li>
           ))}
         </ol>
-        <p className="mt-4 text-sm text-muted">{LANDING.timeline}</p>
       </Band>
 
       {/* 무엇을 묻나 */}

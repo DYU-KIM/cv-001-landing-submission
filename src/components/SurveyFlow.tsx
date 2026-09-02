@@ -1095,8 +1095,6 @@ function SolutionReveal({
     impOutcomes: server?.impOutcomes ?? values.impOutcomes,
   };
 
-  const upcoming = hasUpcomingTrip(answered.experience);
-
   return (
     <Shell>
       <p className="mb-3 text-sm text-muted">{SOLUTION.savedNote}</p>
@@ -1110,10 +1108,7 @@ function SolutionReveal({
       <div className="mb-8 rounded-2xl bg-surface p-5">
         <p className="mb-3 text-sm font-semibold">{SOLUTION.pointsTitle}</p>
         <ul className="grid gap-2.5 text-sm text-body">
-          {[
-            ...SOLUTION.points,
-            ...(upcoming ? [] : [SOLUTION.noUpcomingPoint]),
-          ].map((line) => (
+          {SOLUTION.points.map((line) => (
             <li key={line} className="flex gap-2">
               <span aria-hidden className="text-muted">
                 ·
