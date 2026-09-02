@@ -1,4 +1,5 @@
-import { checkOperatorKey, ok } from "@/lib/api";
+import { NextResponse } from "next/server";
+import { checkOperatorKey } from "@/lib/api";
 import { RESPONSE_COOKIE } from "@/lib/session";
 
 /**
@@ -14,7 +15,11 @@ export async function GET(request: Request) {
   const denied = checkOperatorKey(request);
   if (denied) return denied;
 
-  const response = ok({ reset: true });
+  // 쿠키를 지우고 바로 첫 화면으로 보낸다.
+  // 브라우저에 남은 진행상태는 설문 화면이 서버 세션 없음을 확인하고 스스로 지운다.
+  const response = NextResponse.redirect(new URL("/", request.url), {
+    status: 303,
+  });
   response.cookies.set(RESPONSE_COOKIE, "", { path: "/", maxAge: 0 });
   return response;
 }

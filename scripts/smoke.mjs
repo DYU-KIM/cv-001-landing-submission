@@ -209,8 +209,13 @@ async function preConsent() {
 
   const okReset = await fetch(
     `${base}/api/session/reset?key=${encodeURIComponent(exportKey)}`,
+    { redirect: "manual" },
   );
-  check("운영자 키로는 세션을 초기화할 수 있다", okReset.status === 200);
+  check(
+    "운영자 키로 초기화하면 첫 화면으로 보낸다",
+    okReset.status === 303 || okReset.status === 302,
+    String(okReset.status),
+  );
   check(
     "초기화가 응답 쿠키를 지운다",
     (okReset.headers.getSetCookie?.() ?? []).some(

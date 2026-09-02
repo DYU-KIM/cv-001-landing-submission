@@ -248,6 +248,24 @@ export default function SurveyFlow() {
   const [server, setServer] = useState<ServerResponse | null>(null);
   const retry = useRef<(() => void) | null>(null);
 
+  /** 브라우저에 남은 진행상태를 버리고 조사를 처음부터 다시 시작한다. */
+  const restart = () => {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // 무시한다.
+    }
+    setValues(EMPTY);
+    setErrors({});
+    setSaveError(null);
+    setSessionLost(false);
+    setLocked(false);
+    setServer(null);
+    setPhase("problem");
+    setCursor(0);
+    setStep("consent");
+  };
+
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -282,9 +300,18 @@ export default function SurveyFlow() {
     if (!restored || step === "consent") return;
     let cancelled = false;
     void fetch("/api/response")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.ok) return;
+      .then(async (r) => ({ status: r.status, data: await r.json().catch(() => null) }))
+      .then(({ status, data }) => {
+        if (cancelled) return;
+
+        // 서버에 세션이 없는데 브라우저에만 진행상태가 남아 있으면 그 상태는 죽은 것이다.
+        // 그대로 두면 이어서 진행하는 화면이 그려지고 저장할 때마다 막힌다.
+        if (status === 401) {
+          restart();
+          return;
+        }
+
+        if (!data?.ok) return;
         const row = data.response as ServerResponse;
         setServer(row);
         if (row.problemLocked) {
@@ -298,6 +325,8 @@ export default function SurveyFlow() {
     return () => {
       cancelled = true;
     };
+    // restart 는 상태 setter 만 쓰므로 의존성에서 제외한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored, step, phase]);
 
   useEffect(() => {
@@ -378,23 +407,6 @@ export default function SurveyFlow() {
     },
     [],
   );
-
-  const restart = () => {
-    try {
-      sessionStorage.removeItem(DRAFT_KEY);
-    } catch {
-      // 무시한다.
-    }
-    setValues(EMPTY);
-    setErrors({});
-    setSaveError(null);
-    setSessionLost(false);
-    setLocked(false);
-    setServer(null);
-    setPhase("problem");
-    setCursor(0);
-    setStep("consent");
-  };
 
   if (!restored) return null;
 
