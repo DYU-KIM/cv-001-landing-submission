@@ -1,19 +1,24 @@
 @import "tailwindcss";
 
 /*
- * 시각 디자인·브랜드는 계약서에서 Deferred 항목이다.
- * 여기서는 모바일에서 읽기 쉬운 중립 스타일만 정의하고 색·로고를 주장하지 않는다.
+ * 색·타이포·간격은 금융앱 참조 디자인시스템(DESIGN.md)에서 가져온 역할 값이다.
+ * 그림자 토큰은 승격되지 않았으므로 쓰지 않는다. 층은 흰색/#f2f4f6 밴딩과
+ * 1px 경계선으로만 나눈다.
  */
 
 @theme inline {
   --color-page: #ffffff;
-  --color-ink: #16181d;
-  --color-muted: #5c6270;
-  --color-line: #dfe3ea;
-  --color-soft: #f5f7fa;
-  --color-accent: #1f4fd8;
+  --color-ink: #191f28;
+  --color-body: #4e5968;
+  --color-muted: #8b95a1;
+  --color-surface: #f2f4f6;
+  --color-line: #e5e8eb;
+  --color-accent: #3182f6;
+  --color-accent-hover: #2272eb;
   --color-accent-ink: #ffffff;
-  --color-danger: #c02626;
+  --color-weak: #e8f3ff;
+  --color-weak-ink: #1b64da;
+  --color-danger: #e42939;
   --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
 }
 
@@ -26,7 +31,8 @@ body {
   background: var(--color-page);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  line-height: 1.65;
+  font-size: 16px;
+  line-height: 24px;
   word-break: keep-all;
 }
 

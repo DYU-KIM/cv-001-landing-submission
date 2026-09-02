@@ -4,33 +4,35 @@ import type { ReactNode } from "react";
 import { graphemeLength } from "@/lib/validation";
 import type { Option } from "@/lib/contract";
 
+/** 참조 시스템의 버튼 기하: 높이 56px, 라운드 16px, 17px/600. 그림자는 쓰지 않는다. */
+const CONTROL =
+  "flex w-full items-center gap-3 rounded-2xl border px-5 py-4 text-left transition";
+
 export function Field({
   label,
   hint,
   error,
-  required,
+  optional,
   children,
 }: {
-  label: string;
+  label?: string;
   hint?: ReactNode;
   error?: string;
-  required?: boolean;
+  optional?: boolean;
   children: ReactNode;
 }) {
   return (
     <fieldset className="mb-8 border-0 p-0">
-      <legend className="mb-1 text-base font-semibold">
-        {label}
-        {required ? (
-          <span className="ml-1 text-danger" aria-hidden>
-            *
-          </span>
-        ) : (
-          <span className="ml-2 align-middle text-xs font-normal text-muted">
-            선택
-          </span>
-        )}
-      </legend>
+      {label ? (
+        <legend className="mb-1 text-base font-semibold">
+          {label}
+          {optional ? (
+            <span className="ml-2 align-middle text-sm font-normal text-muted">
+              선택
+            </span>
+          ) : null}
+        </legend>
+      ) : null}
       {hint ? <p className="mb-3 text-sm text-muted">{hint}</p> : null}
       <div className="mt-3">{children}</div>
       {error ? (
@@ -44,10 +46,11 @@ export function Field({
 
 const choiceClass = (selected: boolean) =>
   [
-    "flex w-full cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 text-left transition",
+    CONTROL,
+    "items-start",
     selected
-      ? "border-accent bg-[color-mix(in_srgb,var(--color-accent)_7%,white)]"
-      : "border-line bg-white hover:border-muted",
+      ? "border-accent bg-weak"
+      : "border-line bg-page hover:border-muted",
   ].join(" ");
 
 export function RadioGroup({
@@ -68,7 +71,7 @@ export function RadioGroup({
           <input
             type="radio"
             name={name}
-            className="mt-1.5 h-4 w-4 shrink-0 accent-accent"
+            className="mt-1 h-4 w-4 shrink-0 accent-accent"
             checked={value === option.value}
             onChange={() => onChange(option.value)}
           />
@@ -111,7 +114,7 @@ export function CheckboxGroup({
           >
             <input
               type="checkbox"
-              className="mt-1.5 h-4 w-4 shrink-0 accent-accent"
+              className="mt-1 h-4 w-4 shrink-0 accent-accent"
               checked={selected}
               disabled={blocked}
               onChange={() => toggle(option.value)}
@@ -121,7 +124,7 @@ export function CheckboxGroup({
         );
       })}
       {max ? (
-        <p className="text-xs text-muted">
+        <p className="text-sm text-muted">
           최대 {max}개까지 선택할 수 있습니다. ({values.length}/{max})
         </p>
       ) : null}
@@ -171,7 +174,7 @@ export function OrderedPicker({
             aria-pressed={selected}
           >
             <span
-              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${
                 selected
                   ? "bg-accent text-accent-ink"
                   : "border border-line text-muted"
@@ -183,7 +186,7 @@ export function OrderedPicker({
           </button>
         );
       })}
-      <p className="text-xs text-muted">
+      <p className="text-sm text-muted">
         확인한 순서대로 눌러주세요. 최대 {max}개까지 선택할 수 있습니다.
       </p>
     </div>
@@ -207,14 +210,14 @@ export function TextArea({
   return (
     <div>
       <textarea
-        className="w-full rounded-xl border border-line bg-white px-4 py-3 outline-none focus:border-accent"
+        className="w-full rounded-2xl border border-line bg-page px-5 py-4 outline-none focus:border-accent"
         rows={rows}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
       <p
-        className={`mt-1 text-right text-xs ${used > max ? "text-danger" : "text-muted"}`}
+        className={`mt-1 text-right text-sm ${used > max ? "text-danger" : "text-muted"}`}
       >
         {used} / {max}
       </p>
@@ -245,14 +248,14 @@ export function TextInput({
         type={type}
         inputMode={inputMode}
         min={min}
-        className="w-full rounded-xl border border-line bg-white px-4 py-3 outline-none focus:border-accent"
+        className="h-14 w-full rounded-2xl border border-line bg-page px-5 outline-none focus:border-accent"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
       {max ? (
         <p
-          className={`mt-1 text-right text-xs ${
+          className={`mt-1 text-right text-sm ${
             graphemeLength(value) > max ? "text-danger" : "text-muted"
           }`}
         >
@@ -276,7 +279,7 @@ export function Check({
     <label className={choiceClass(checked)}>
       <input
         type="checkbox"
-        className="mt-1.5 h-4 w-4 shrink-0 accent-accent"
+        className="mt-1 h-4 w-4 shrink-0 accent-accent"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
@@ -301,7 +304,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="w-full rounded-xl bg-accent px-5 py-4 font-semibold text-accent-ink transition disabled:opacity-50"
+      className="h-14 w-full rounded-2xl bg-accent px-5 text-[17px] font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-50"
     >
       {children}
     </button>
@@ -319,7 +322,7 @@ export function QuietButton({
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-xl border border-line px-5 py-3 text-muted transition hover:border-muted"
+      className="h-14 w-full rounded-2xl border border-line px-5 text-[17px] font-semibold text-body transition hover:border-muted"
     >
       {children}
     </button>
@@ -337,19 +340,34 @@ export function SaveError({
   retrying: boolean;
 }) {
   return (
-    <div
-      role="alert"
-      className="mb-4 rounded-xl border border-danger/40 bg-[color-mix(in_srgb,var(--color-danger)_6%,white)] p-4"
-    >
+    <div role="alert" className="mb-6 rounded-2xl bg-surface p-5">
       <p className="text-sm text-danger">{message}</p>
       <button
         type="button"
         onClick={onRetry}
         disabled={retrying}
-        className="mt-3 rounded-lg border border-danger/50 px-4 py-2 text-sm font-medium text-danger disabled:opacity-50"
+        className="mt-3 rounded-xl border border-danger px-4 py-2 text-sm font-semibold text-danger disabled:opacity-50"
       >
         {retrying ? "다시 저장하는 중…" : "다시 저장"}
       </button>
     </div>
+  );
+}
+
+/** 개인정보 고지표. 계약서 Required privacy summary 를 그대로 렌더링한다. */
+export function PrivacyTable({
+  rows,
+}: {
+  rows: readonly { item: string; notice: string }[];
+}) {
+  return (
+    <dl className="grid gap-3 rounded-2xl bg-surface p-5 text-sm">
+      {rows.map((row) => (
+        <div key={row.item} className="grid gap-1">
+          <dt className="font-semibold text-ink">{row.item}</dt>
+          <dd className="m-0 text-body">{row.notice}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

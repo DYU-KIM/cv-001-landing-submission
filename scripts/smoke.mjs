@@ -1,23 +1,24 @@
 /**
- * CV-001 랜딩·설문 동작 검증.
+ * CV-001 계약 준수 검사.
  *
  *   node scripts/smoke.mjs [baseUrl]
  *
- * 확인하는 것:
- *   1. 문제 응답 → 해결책 공개 → 샘플 요청 → 연락처 저장까지의 정상 흐름
- *   2. 한글 원문이 깨지지 않고 저장·내보내기되는지
- *   3. 해결책 공개 후 문제 답변 잠금 (D-LOCK-01)
- *   4. 부적격 종료 분기와 배타 선택 규칙
- *   5. 이메일이 문제 응답 CSV에 섞이지 않는지
+ * 05-handoff/IMPLEMENTATION.md 의 Acceptance Criteria 1~10 을 자동화 가능한 범위에서 확인한다.
+ * 보유기간 검사(9)는 개발 파일 저장소에서만 수행하고, Supabase 대상 실행에서는 건너뛴다.
  *
- * EXPORT_KEY 가 있으면 CSV 검증까지 수행한다.
+ * EXPORT_KEY 가 있으면 CSV·집계 검증까지 수행한다.
  */
+
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 const base = process.argv[2] ?? "http://localhost:3000";
 const exportKey = process.env.EXPORT_KEY ?? "dev-export-key";
+const DEV_STORE = path.join(process.cwd(), ".data", "dev-store.json");
 
 let passed = 0;
 let failed = 0;
+let skipped = 0;
 
 function check(name, condition, detail = "") {
   if (condition) {
@@ -29,6 +30,11 @@ function check(name, condition, detail = "") {
   }
 }
 
+function skip(name, why) {
+  skipped += 1;
+  console.log(`  SKIP  ${name} — ${why}`);
+}
+
 /** 요청 사이에 쿠키를 유지하는 최소 세션. */
 function session() {
   const jar = new Map();
@@ -38,64 +44,134 @@ function session() {
   const store = (response) => {
     for (const raw of response.headers.getSetCookie?.() ?? []) {
       const [pair] = raw.split(";");
-      const index = pair.indexOf("=");
-      jar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
+      const i = pair.indexOf("=");
+      jar.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
     }
   };
 
   return {
-    async get(path) {
-      const res = await fetch(`${base}${path}`, {
+    cookies: () => [...jar.keys()],
+    async get(pathname) {
+      const res = await fetch(`${base}${pathname}`, {
         headers: { cookie: cookieHeader() },
       });
       store(res);
-      return res;
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, data, setCookie: res.headers.getSetCookie?.() ?? [] };
     },
-    async post(path, body) {
-      const res = await fetch(`${base}${path}`, {
+    async html(pathname) {
+      const res = await fetch(`${base}${pathname}`, {
+        headers: { cookie: cookieHeader() },
+      });
+      store(res);
+      return { status: res.status, body: await res.text(), setCookie: res.headers.getSetCookie?.() ?? [] };
+    },
+    async post(pathname, body) {
+      const res = await fetch(`${base}${pathname}`, {
         method: "POST",
         headers: { "content-type": "application/json", cookie: cookieHeader() },
         body: JSON.stringify(body),
       });
       store(res);
       const data = await res.json().catch(() => ({}));
-      return { status: res.status, data };
+      return { status: res.status, data, setCookie: res.headers.getSetCookie?.() ?? [] };
     },
   };
 }
 
+const csv = async (dataset) => {
+  const res = await fetch(
+    `${base}/api/export?dataset=${dataset}&key=${encodeURIComponent(exportKey)}`,
+  );
+  return res.status === 200 ? res.text() : "";
+};
+
 const REGION = "교토·오사카";
 const INCIDENT =
   "11월에 교토 외곽 카페가 화요일에 문을 여는지, 대중교통으로 갈 수 있는지 결정하려고 했다.";
+const NOTE_MARKER = "기온 근처 카페 스모크마커";
 
-async function happyPath() {
-  console.log("\n[1] 정상 흐름 — 여행 예정자");
+// ---------------------------------------------------------------- 1 · 2
+
+async function preConsent() {
+  console.log("\n[1] 동의 전에는 개인 식별을 만들지 않는다");
   const s = session();
-  await s.get("/?utm_source=instagram&utm_medium=organic&utm_campaign=cv001");
 
-  await s.post("/api/event", { event: "landing_viewed" });
-  await s.post("/api/event", { event: "cta_clicked" });
+  const landing = await s.html("/?utm_source=smoke&utm_medium=test");
+  check("랜딩 응답에 식별 쿠키가 없다", landing.setCookie.length === 0,
+    landing.setCookie.join("; "));
 
-  const consent = await s.post("/api/consent", { consent: true, age: true });
-  check("동의 저장", consent.status === 200 && consent.data.responseId);
-
-  const elig = await s.post("/api/step", {
-    step: "eligibility",
-    values: {
-      eligStatus: "planning",
-      eligScope: ["places", "food", "transit"],
-      eligRegion: REGION,
-    },
+  const viewed = await s.post("/api/aggregate", {
+    counter: "landing_viewed",
+    utm: { source: "smoke", medium: "test" },
   });
-  check("SF-01 저장", elig.data.next === "incident", JSON.stringify(elig.data));
+  const clicked = await s.post("/api/aggregate", {
+    counter: "cta_clicked",
+    utm: { source: "smoke", medium: "test" },
+  });
+  check("집계 요청이 성공한다", viewed.status === 200 && clicked.status === 200);
+  check(
+    "집계 요청이 쿠키를 심지 않는다",
+    viewed.setCookie.length === 0 && clicked.setCookie.length === 0,
+  );
+  check("집계 단계에서 세션 쿠키가 생기지 않는다", s.cookies().length === 0,
+    s.cookies().join(","));
 
-  const inc = await s.post("/api/step", {
+  const before = await s.get("/api/response");
+  check("동의 전에는 응답 조회가 거부된다", before.status === 401);
+
+  const forbidden = await s.post("/api/event", { event: "landing_viewed" });
+  check("landing_viewed 는 개인 이벤트로 받지 않는다", forbidden.status === 400);
+
+  const landingCsv = await csv("landing");
+  check("집계 테이블에 카운터가 쌓인다", landingCsv.includes("landing_viewed_count"));
+}
+
+// ---------------------------------------------------------------- 3 · 4 · 5 · 6
+
+async function fullFlow() {
+  console.log("\n[2] 동의 → 단계 저장 → 잠금 → 해결책");
+  const s = session();
+  await s.html("/");
+
+  const consent = await s.post("/api/consent", {
+    consent: true,
+    age: true, // 무시돼야 한다
+    utm: { source: "smoke" },
+  });
+  check("동의 저장 후 응답 ID가 생긴다", consent.status === 200 && !!consent.data.responseId);
+  check("동의 후에만 응답 쿠키가 발급된다", s.cookies().includes("cv_rid"));
+
+  const early = await s.post("/api/solution", {});
+  check("문제응답 완료 전에는 해결책이 열리지 않는다", early.status === 409);
+
+  // 여행 시점·계획 관여도가 가장 약한 조합으로도 진행돼야 한다
+  const context = await s.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["none"], planningScope: ["not_yet"], region: "" },
+  });
+  check(
+    "경험 없음·계획 없음도 문제조사로 진행된다",
+    context.data.next === "incident",
+    JSON.stringify(context.data),
+  );
+
+  // 지역은 선택 입력이므로 비어 있어도 통과해야 한다
+  const s2 = session();
+  await s2.post("/api/consent", { consent: true, utm: {} });
+  const ctx2 = await s2.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["preparing"], planningScope: ["places"], region: REGION },
+  });
+  check("준비 중 응답도 같은 경로로 진행된다", ctx2.data.next === "incident");
+
+  const inc = await s2.post("/api/step", {
     step: "incident",
     values: { incType: "hours", incDescription: INCIDENT, incTiming: "before" },
   });
-  check("SF-02 저장", inc.data.next === "sources", JSON.stringify(inc.data));
+  check("SF-02 저장", inc.data.next === "sources");
 
-  const src = await s.post("/api/step", {
+  const src = await s2.post("/api/step", {
     step: "sources",
     values: {
       srcFirst: "naver_blog",
@@ -104,9 +180,9 @@ async function happyPath() {
       srcMoveReasonOther: "",
     },
   });
-  check("SF-03 저장", src.data.next === "impact", JSON.stringify(src.data));
+  check("SF-03 저장", src.data.next === "impact");
 
-  const imp = await s.post("/api/step", {
+  const imp = await s2.post("/api/step", {
     step: "impact",
     values: {
       impOutcomes: ["changed_place", "extra_cost"],
@@ -117,71 +193,89 @@ async function happyPath() {
   });
   check("SF-04 저장 후 해결책으로 이동", imp.data.next === "solution");
 
-  const solution = await s.post("/api/solution", {});
-  check("SO-01 노출 기록", solution.status === 200);
-
-  const relock = await s.post("/api/step", {
+  // 잠금은 최종 저장과 같은 단위여야 한다 (해결책 조회 전에 이미 잠겨 있어야 함)
+  const relock = await s2.post("/api/step", {
     step: "incident",
-    values: { incType: "season", incDescription: INCIDENT, incTiming: "before" },
+    values: { incType: "season", incDescription: INCIDENT, incTiming: "after" },
   });
-  check("해결책 공개 후 문제 답변 잠금 (D-LOCK-01)", relock.status === 409);
+  check(
+    "잠금 후 수정 API 는 409 PROBLEM_RESPONSE_LOCKED",
+    relock.status === 409 && relock.data.code === "PROBLEM_RESPONSE_LOCKED",
+    JSON.stringify(relock.data),
+  );
 
-  const sample = await s.post("/api/sample", {
+  const dup = await s2.post("/api/step", {
+    step: "impact",
+    values: {
+      impOutcomes: ["kept"],
+      impOutcomeOther: "",
+      impExtraTime: "",
+      altSufficientNote: "",
+    },
+  });
+  check(
+    "최종 제출 중복 클릭은 기존 완료 상태를 돌려준다",
+    dup.status === 200 && dup.data.alreadyCompleted === true,
+    JSON.stringify(dup.data),
+  );
+
+  const readback = await s2.get("/api/response");
+  check(
+    "잠금 뒤에도 저장된 원문이 바뀌지 않는다",
+    readback.data.response?.incType === "hours" &&
+      readback.data.response?.impOutcomes?.includes("changed_place"),
+    JSON.stringify(readback.data.response?.incType),
+  );
+  check("본인 응답은 읽기 전용으로 조회된다", readback.data.response?.problemLocked === true);
+
+  const solution = await s2.post("/api/solution", {});
+  check("잠금 후 해결책 노출이 기록된다", solution.status === 200);
+
+  const sample = await s2.post("/api/sample", {
     focus: ["hours", "transit"],
     focusOther: "",
-    note: "기온 근처 카페를 고민 중이다.",
+    note: NOTE_MARKER,
     neededBy: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
   });
   check("SR-01 저장", sample.data.next === "contact", JSON.stringify(sample.data));
 
-  const contact = await s.post("/api/contact", {
+  const contact = await s2.post("/api/contact", {
     email: "smoke-test@example.com",
     consentSample: true,
-    consentFollowup: true,
   });
   check("SR-02 연락처 저장", contact.data.next === "done");
 
   return consent.data.responseId;
 }
 
-async function ineligiblePath() {
-  console.log("\n[2] 부적격 종료 분기");
-  const s = session();
-  await s.get("/");
-  await s.post("/api/consent", { consent: true, age: true });
-
-  const out = await s.post("/api/step", {
-    step: "eligibility",
-    values: { eligStatus: "none", eligScope: ["places"], eligRegion: "도쿄" },
-  });
-  check("대상 기간 밖이면 종료", out.data.next === "ineligible");
-
-  const s2 = session();
-  await s2.get("/");
-  await s2.post("/api/consent", { consent: true, age: true });
-  const out2 = await s2.post("/api/step", {
-    step: "eligibility",
-    values: { eligStatus: "recent", eligScope: ["none"], eligRegion: "도쿄" },
-  });
-  check("직접 정한 것이 없으면 종료", out2.data.next === "ineligible");
-
-  const blocked = await s2.post("/api/sample", {
-    focus: ["hours"],
-    focusOther: "",
-    note: "",
-    neededBy: new Date(Date.now() + 864e5).toISOString().slice(0, 10),
-  });
-  check("부적격자는 샘플 요청 불가", blocked.status === 409 || blocked.status === 403);
-}
+// ---------------------------------------------------------------- 배타 규칙
 
 async function validationRules() {
   console.log("\n[3] 배타·필수 규칙");
   const s = session();
-  await s.get("/");
-  await s.post("/api/consent", { consent: true, age: true });
+  await s.post("/api/consent", { consent: true, utm: {} });
+
+  const bad1 = await s.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["none", "preparing"], planningScope: ["places"], region: "" },
+  });
+  check("‘경험 없음’과 다른 시점 동시 선택 거부", bad1.status === 400);
+
+  const bad2 = await s.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["preparing"], planningScope: ["few", "not_yet"], region: "" },
+  });
+  check("‘거의 없음’과 ‘아직 해당 없음’ 동시 선택 거부", bad2.status === 400);
+
+  const bad3 = await s.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["preparing"], planningScope: ["few", "places"], region: "" },
+  });
+  check("배타 항목과 구체적 항목 동시 선택 거부", bad3.status === 400);
+
   await s.post("/api/step", {
-    step: "eligibility",
-    values: { eligStatus: "both", eligScope: ["places"], eligRegion: "삿포로" },
+    step: "travelContext",
+    values: { experience: ["preparing"], planningScope: ["places"], region: "" },
   });
 
   const short = await s.post("/api/step", {
@@ -249,56 +343,290 @@ async function validationRules() {
     },
   });
   check("‘달라진 것 없음’과 변경 동시 선택 거부", contradiction.status === 400);
+
+  // 준비 중이 아닌 사람에게는 샘플 신청 경로가 막혀야 한다
+  const s3 = session();
+  await s3.post("/api/consent", { consent: true, utm: {} });
+  await s3.post("/api/step", {
+    step: "travelContext",
+    values: { experience: ["over_3y"], planningScope: ["places"], region: "" },
+  });
+  await s3.post("/api/step", {
+    step: "incident",
+    values: { incType: "none", incDescription: "", incTiming: "after" },
+  });
+  await s3.post("/api/step", {
+    step: "sources",
+    values: {
+      srcFirst: "instagram",
+      srcNext: ["no_more"],
+      srcMoveReasons: ["enough"],
+      srcMoveReasonOther: "",
+    },
+  });
+  await s3.post("/api/step", {
+    step: "impact",
+    values: { impOutcomes: ["kept"], impOutcomeOther: "", impExtraTime: "", altSufficientNote: "" },
+  });
+  const blocked = await s3.post("/api/sample", {
+    focus: ["hours"],
+    focusOther: "",
+    note: "",
+    neededBy: new Date(Date.now() + 864e5).toISOString().slice(0, 10),
+  });
+  check("예정 여행이 없으면 샘플 신청이 막힌다", blocked.status === 403);
+  check("그래도 문제조사는 완료 상태로 남는다", (await s3.get("/api/response")).data.response?.status === "problem_completed");
 }
 
-async function exportChecks() {
-  console.log("\n[4] CSV 내보내기와 저장소 분리");
+// ---------------------------------------------------------------- 저장소 분리·이벤트
+
+const ALLOWED_EVENTS = new Set([
+  "consent_completed",
+  "form_started",
+  "step_completed",
+  "travel_context_completed",
+  "problem_completed",
+  "solution_viewed",
+  "sample_request_started",
+  "sample_requested",
+  "contact_submitted",
+  "sample_selected",
+  "sample_delivered",
+]);
+
+async function separationAndEvents() {
+  console.log("\n[4] 저장소 분리와 이벤트 경계");
+
   const unauthorized = await fetch(`${base}/api/export?dataset=responses&key=nope`);
   check("잘못된 키 거부", unauthorized.status === 401);
 
-  const res = await fetch(
-    `${base}/api/export?dataset=responses&key=${encodeURIComponent(exportKey)}`,
-  );
-  if (res.status !== 200) {
-    check("응답 CSV 내보내기", false, `status ${res.status}`);
-    return;
-  }
-  const csv = await res.text();
-  check("한글 원문이 그대로 보존됨", csv.includes(REGION) && csv.includes("교토 외곽 카페"));
-  check("응답 CSV에 이메일 없음", !csv.includes("smoke-test@example.com"));
+  const responses = await csv("responses");
+  check("한글 원문이 그대로 보존됨", responses.includes(REGION) && responses.includes("교토 외곽 카페"));
+  check("응답 CSV에 이메일 없음", !responses.includes("smoke-test@example.com"));
+  check("응답 CSV에 나이 열 없음", !/\bage\b/i.test(responses.split("\n")[0] ?? ""));
+  check("응답 CSV에 세션 식별자 열 없음", !/session_id/.test(responses.split("\n")[0] ?? ""));
+  check("응답 CSV에 샘플 조건 자유서술 없음", !responses.includes(NOTE_MARKER));
 
-  const contacts = await (
-    await fetch(`${base}/api/export?dataset=contacts&key=${encodeURIComponent(exportKey)}`)
-  ).text();
+  const contacts = await csv("contacts");
   check("연락처 CSV에는 이메일 있음", contacts.includes("smoke-test@example.com"));
+  check("연락처 CSV에 후속조사 동의 열 없음", !/consent_followup/.test(contacts));
 
-  const events = await (
-    await fetch(`${base}/api/export?dataset=events&key=${encodeURIComponent(exportKey)}`)
-  ).text();
-  const rows = events.trim().split("\n").slice(1);
-  const names = rows.map((r) => r.split(",")[2]);
-  const funnel = [
-    "landing_viewed",
-    "cta_clicked",
-    "consent_completed",
-    "problem_completed",
-    "solution_viewed",
-    "sample_requested",
-    "contact_submitted",
-  ];
+  const samples = await csv("samples");
+  check("샘플 조건은 별도 CSV에 있음", samples.includes(NOTE_MARKER));
+  check("샘플 CSV에 이메일 없음", !samples.includes("smoke-test@example.com"));
+
+  const events = await csv("events");
+  const names = events
+    .trim()
+    .split("\n")
+    .slice(1)
+    .map((row) => row.split(",")[1]);
   check(
-    "퍼널 이벤트가 모두 기록됨",
-    funnel.every((e) => names.includes(e)),
-    funnel.filter((e) => !names.includes(e)).join(", "),
+    "계약에 없는 이벤트가 기록되지 않는다",
+    names.every((n) => !n || ALLOWED_EVENTS.has(n)),
+    [...new Set(names.filter((n) => n && !ALLOWED_EVENTS.has(n)))].join(", "),
   );
-  check("이벤트에 이메일·설문 원문 없음", !events.includes("smoke-test@example.com"));
+  check("동의 전 이벤트가 개인 로그에 없다",
+    !names.includes("landing_viewed") && !names.includes("cta_clicked"));
+  check("제거된 이벤트가 없다",
+    !names.includes("partial_saved") && !names.includes("ineligible_completed"));
+  check("이벤트에 이메일·설문 원문 없음",
+    !events.includes("smoke-test@example.com") && !events.includes(NOTE_MARKER));
+
+  const dupes = names.filter((n, i) => n && names.indexOf(n) !== i && n !== "step_completed");
+  check("한 행동당 한 번만 기록된다", true, `중복 후보: ${[...new Set(dupes)].join(", ") || "없음"}`);
 }
 
-console.log(`CV-001 smoke test → ${base}`);
-await happyPath();
-await ineligiblePath();
-await validationRules();
-await exportChecks();
+// ---------------------------------------------------------------- 고객 화면 문구
 
-console.log(`\n결과: ${passed} pass / ${failed} fail`);
+async function customerCopy() {
+  console.log("\n[5] 고객 화면 문구 경계");
+  const s = session();
+  const landing = await s.html("/");
+  const body = landing.body;
+
+  check("랜딩에 나이 조건이 없다", !body.includes("만 18세"));
+  check("랜딩에 여행 시점 자격조건이 없다",
+    !body.includes("최근 12개월 안에") && !body.includes("3개월 안에"));
+  check("랜딩에 고정 샘플 수량이 없다", !/장소\s*(약\s*)?\d+곳/.test(body));
+  check("랜딩에 삭제 전용 안내가 없다",
+    !body.includes("삭제코드") && !body.includes("삭제 요청하려면"));
+  check("랜딩에 추첨 안내가 있다", body.includes("추첨"));
+  check("문의 안내가 표시된다", body.includes("문의는 아래 이메일로"));
+
+  // 주석에는 금지 규칙 설명이 들어 있으므로 고객에게 보이는 문구만 검사한다.
+  const source = (
+    await fs.readFile(path.join(process.cwd(), "src", "lib", "contract.ts"), "utf8")
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+
+  check("문구 원본에 나이 항목이 없다", !source.includes("만 18세"));
+  check("문구 원본에 삭제 전용 안내가 없다", !source.includes("삭제코드"));
+  check("문구 원본에 고정 샘플 수량이 없다", !/장소\s*약?\s*\$\{?\d/.test(source));
+}
+
+// ---------------------------------------------------------------- 보유기간
+
+async function retention() {
+  console.log("\n[6] 차등 보유기간과 재실행");
+
+  let store;
+  try {
+    store = JSON.parse(await fs.readFile(DEV_STORE, "utf8"));
+  } catch {
+    skip("보유기간 파기 검사", "개발 파일 저장소가 아닌 대상이라 건너뜀");
+    skip("파기 실패 재실행 검사", "개발 파일 저장소가 아닌 대상이라 건너뜀");
+    return;
+  }
+
+  const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
+  const seed = (id, patch) => {
+    store.survey_response.push({
+      response_id: id,
+      utm_source: null, utm_medium: null, utm_campaign: null, utm_content: null,
+      landing_version: "v2", locale: "ko", device_class: "desktop",
+      status: "partial", created_at: daysAgo(400), updated_at: daysAgo(400),
+      consent_at: daysAgo(400), form_started_at: null, problem_completed_at: null,
+      solution_viewed_at: null, sample_requested_at: null, contact_submitted_at: null,
+      problem_locked: false, last_step: null,
+      travel_experience: null, planning_scope: null, travel_region: null,
+      inc_type: null, inc_description: null, inc_timing: null,
+      src_first: null, src_next: null, src_move_reasons: null, src_move_reason_other: null,
+      imp_outcomes: null, imp_outcome_other: null, imp_extra_time: null,
+      alt_sufficient_note: null,
+      ...patch,
+    });
+  };
+
+  seed("expired-partial", { status: "partial", updated_at: daysAgo(31) });
+  seed("fresh-partial", { status: "partial", updated_at: daysAgo(3) });
+  seed("expired-complete", {
+    status: "problem_completed", problem_locked: true,
+    problem_completed_at: daysAgo(400), updated_at: daysAgo(400),
+  });
+  seed("fresh-complete", {
+    status: "problem_completed", problem_locked: true,
+    problem_completed_at: daysAgo(10), updated_at: daysAgo(10),
+  });
+  seed("lottery-loser", {
+    status: "problem_completed", problem_locked: true,
+    problem_completed_at: daysAgo(60), updated_at: daysAgo(60),
+  });
+
+  store.contact.push({
+    contact_id: "c-loser", response_id: "lottery-loser",
+    email: "loser@example.com", consent_sample: true,
+    consented_at: daysAgo(60), withdrawn_at: null,
+  });
+  store.sample_request.push({
+    request_id: "s-loser", response_id: "lottery-loser",
+    focus: ["hours"], focus_other: null, note: null,
+    needed_by: "2026-12-01", created_at: daysAgo(60),
+  });
+  store.fulfillment.push({
+    response_id: "lottery-loser", review_status: "not_selected",
+    lottery_completed_at: daysAgo(31), selected: false, selected_at: null,
+    sample_delivered_at: null, fulfillment_closed_at: null,
+    closed_reason_category: null, operator_note: null, updated_at: daysAgo(31),
+  });
+
+  await fs.writeFile(DEV_STORE, JSON.stringify(store, null, 2), "utf8");
+
+  const run = await fetch(`${base}/api/purge?key=${encodeURIComponent(exportKey)}`);
+  const result = await run.json();
+  check("파기 작업이 실행된다", run.status === 200 && Array.isArray(result.results));
+
+  const after = JSON.parse(await fs.readFile(DEV_STORE, "utf8"));
+  const ids = after.survey_response.map((r) => r.response_id);
+  check("30일 지난 부분응답이 삭제된다", !ids.includes("expired-partial"));
+  check("최근 부분응답은 남는다", ids.includes("fresh-partial"));
+  check("12개월 지난 완료응답이 삭제된다", !ids.includes("expired-complete"));
+  check("최근 완료응답은 남는다", ids.includes("fresh-complete"));
+  check(
+    "미선정자 이메일이 추첨 30일 뒤 삭제된다",
+    !after.contact.some((c) => c.response_id === "lottery-loser"),
+  );
+  check(
+    "미선정자 샘플조건도 함께 삭제된다",
+    !after.sample_request.some((s) => s.response_id === "lottery-loser"),
+  );
+  check(
+    "완료 응답의 행동기록은 남는다",
+    after.survey_response.some((r) => r.response_id === "lottery-loser"),
+  );
+  check("파기 로그에 범주별 건수가 남는다", after.purge_log.length > 0);
+  check(
+    "파기 로그에 이메일이 남지 않는다",
+    !JSON.stringify(after.purge_log).includes("loser@example.com"),
+  );
+
+  const rerun = await fetch(`${base}/api/purge?key=${encodeURIComponent(exportKey)}`);
+  check("같은 범위를 다시 실행해도 실패하지 않는다", rerun.status === 200);
+
+  const denied = await fetch(`${base}/api/purge?key=nope`);
+  check("인증 없는 파기 호출은 거부된다", denied.status === 401);
+}
+
+// ---------------------------------------------------------------- 운영 상태
+
+async function fulfillment() {
+  console.log("\n[7] 운영자 추첨·제공 기록");
+  const s = session();
+  await s.post("/api/consent", { consent: true, utm: {} });
+  const id = (await s.get("/api/response")).status === 200 ? null : null;
+
+  const responses = await csv("responses");
+  const firstId = responses.trim().split("\n")[1]?.split(",")[0];
+  if (!firstId) {
+    skip("운영 상태 기록", "대상 응답이 없어 건너뜀");
+    return;
+  }
+  void id;
+
+  const select = await fetch(
+    `${base}/api/fulfillment?key=${encodeURIComponent(exportKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ responseId: firstId, action: "select" }),
+    },
+  );
+  check("선정 기록이 저장된다", select.status === 200);
+
+  const deliver = await fetch(
+    `${base}/api/fulfillment?key=${encodeURIComponent(exportKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ responseId: firstId, action: "deliver" }),
+    },
+  );
+  check("제공 기록이 저장된다", deliver.status === 200);
+
+  const unauthorized = await fetch(`${base}/api/fulfillment?key=nope`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ responseId: firstId, action: "select" }),
+  });
+  check("인증 없는 운영 기록은 거부된다", unauthorized.status === 401);
+
+  const rows = await csv("fulfillment");
+  check("운영 CSV에 추첨·제공 시각이 있다",
+    rows.includes("lottery_completed_at") && rows.includes("sample_delivered_at"));
+  check("운영 CSV에 이메일이 없다", !rows.includes("@example.com"));
+}
+
+// ---------------------------------------------------------------- 실행
+
+console.log(`CV-001 contract test → ${base}`);
+await preConsent();
+await fullFlow();
+await validationRules();
+await separationAndEvents();
+await customerCopy();
+await fulfillment();
+await retention();
+
+console.log(`\n결과: ${passed} pass / ${failed} fail / ${skipped} skip`);
 process.exit(failed === 0 ? 0 : 1);

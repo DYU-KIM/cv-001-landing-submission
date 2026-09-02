@@ -1,17 +1,20 @@
 /**
  * 계약서의 필수·분기·배타 규칙을 서버와 클라이언트가 같은 코드로 검사한다.
  * 클라이언트 검사는 편의이고, 저장 여부는 항상 서버 검사 결과로 정한다.
+ *
+ * SF-01의 상호배타 검사는 분류값의 모순만 막으며 응답자를 탈락시키지 않는다. (Q-058)
+ * 나이·연령대 검증은 존재하지 않는다. (Q-059)
  */
 
 import { z } from "zod";
 import {
-  ELIG_SCOPE,
-  ELIG_STATUS,
   IMP_CHANGE_OUTCOMES,
   IMP_OUTCOME,
   IMP_TIME,
   INC_TIMING,
   INC_TYPE,
+  PLANNING_SCOPE,
+  PLANNING_SCOPE_EXCLUSIVE,
   SMP_FOCUS,
   SMP_FOCUS_MAX,
   SRC_MOVE_REASON,
@@ -20,6 +23,8 @@ import {
   SRC_OPTIONS,
   SRC_REASON_ENOUGH,
   SRC_REASON_MAX,
+  TRAVEL_EXPERIENCE,
+  TRAVEL_EXPERIENCE_NONE,
 } from "./contract";
 
 /**
@@ -40,14 +45,6 @@ export function graphemeLength(value: string): number {
 const values = <T extends readonly { value: string }[]>(options: T) =>
   options.map((o) => o.value) as [string, ...string[]];
 
-const text = (min: number, max: number, message?: string) =>
-  z
-    .string()
-    .transform((s) => s.trim())
-    .refine((s) => graphemeLength(s) >= min && graphemeLength(s) <= max, {
-      message: message ?? `${min}자 이상 ${max}자 이하로 입력해주세요.`,
-    });
-
 const optionalText = (max: number) =>
   z
     .string()
@@ -60,29 +57,68 @@ const optionalText = (max: number) =>
 
 // ------------------------------------------------------------- SF-00 consent
 
+/** 필수 조사 동의 하나뿐이다. 나이 확인 체크박스는 만들지 않는다. */
 export const consentSchema = z.object({
   consent: z.literal(true, { message: "참여 동의가 필요합니다." }),
-  age: z.literal(true, { message: "만 18세 이상만 참여할 수 있습니다." }),
 });
 
-// ------------------------------------------------------------- SF-01 eligibility
+// ------------------------------------------------------------- SF-01 travel context
 
-export const eligibilitySchema = z.object({
-  eligStatus: z.enum(values(ELIG_STATUS), { message: "한 가지를 선택해주세요." }),
-  eligScope: z
-    .array(z.enum(values(ELIG_SCOPE)))
-    .min(1, "하나 이상 선택해주세요."),
-  eligRegion: text(1, 60, "여행한 또는 여행할 도시·지역을 60자 이내로 적어주세요."),
-});
+export const travelContextSchema = z
+  .object({
+    experience: z
+      .array(z.enum(values(TRAVEL_EXPERIENCE)))
+      .min(1, "하나 이상 선택해주세요."),
+    planningScope: z
+      .array(z.enum(values(PLANNING_SCOPE)))
+      .min(1, "하나 이상 선택해주세요."),
+    region: optionalText(60),
+  })
+  .superRefine((v, ctx) => {
+    if (
+      v.experience.includes(TRAVEL_EXPERIENCE_NONE) &&
+      v.experience.length > 1
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["experience"],
+        message:
+          "‘아직 구체적인 준비·경험 없음’은 다른 항목과 함께 선택할 수 없습니다.",
+      });
+    }
 
-export type EligibilityInput = z.infer<typeof eligibilitySchema>;
+    const exclusive = v.planningScope.filter((s) =>
+      (PLANNING_SCOPE_EXCLUSIVE as readonly string[]).includes(s),
+    );
+    if (exclusive.length > 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["planningScope"],
+        message:
+          "‘직접 정한 것이 거의 없음’과 ‘아직 해당 없음’은 함께 선택할 수 없습니다.",
+      });
+    }
+    if (exclusive.length === 1 && v.planningScope.length > 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["planningScope"],
+        message: `‘${
+          PLANNING_SCOPE.find((o) => o.value === exclusive[0])?.label
+        }’은 구체적인 항목과 함께 선택할 수 없습니다.`,
+      });
+    }
+  });
 
-/** SF-01 Branch: 부적격 판정과 사유. 적격이면 null. */
-export function ineligibleReason(input: EligibilityInput): string | null {
-  if (input.eligStatus === "none") return "out_of_window";
-  if (input.eligScope.length === 1 && input.eligScope[0] === "none")
-    return "not_decision_maker";
-  return null;
+export type TravelContextInput = z.infer<typeof travelContextSchema>;
+
+/**
+ * SO-01 분기. 구체적으로 준비 중인 사람에게만 샘플 신청 CTA를 보여준다.
+ * 자격 판정이 아니라 화면 분기이며, 문제조사는 누구도 종료시키지 않는다.
+ */
+export function hasUpcomingTrip(
+  experience: readonly string[] | null | undefined,
+): boolean {
+  return (experience ?? []).includes("preparing");
 }
 
 // ------------------------------------------------------------- SF-02 incident
@@ -94,7 +130,6 @@ export const incidentSchema = z
     incTiming: z.enum(values(INC_TIMING), { message: "한 가지를 선택해주세요." }),
   })
   .superRefine((v, ctx) => {
-    // Branch: "특별히 다시 확인한 상황 없음"이면 서술을 받지 않는다. 그 외에는 필수다.
     if (v.incType === "none") return;
     const n = graphemeLength(v.incDescription);
     if (n < 10 || n > 300) {
@@ -217,9 +252,7 @@ export const sampleSchema = z
       .max(SMP_FOCUS_MAX, `최대 ${SMP_FOCUS_MAX}개까지 선택할 수 있습니다.`),
     focusOther: z.string().optional().default(""),
     note: optionalText(200),
-    neededBy: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 선택해주세요."),
+    neededBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 선택해주세요."),
   })
   .superRefine((v, ctx) => {
     if (v.focus.includes("other")) {
@@ -247,22 +280,17 @@ export type SampleInput = z.infer<typeof sampleSchema>;
 
 // ------------------------------------------------------------- SR-02 contact
 
+/** 후속 사용조사 동의는 만들지 않는다. (Q-052) */
 export const contactSchema = z.object({
   email: z.email("이메일 형식을 확인해주세요.").max(254),
   consentSample: z.literal(true, {
     message: "이메일 수집·이용 동의가 필요합니다.",
   }),
-  consentFollowup: z.boolean().default(false),
 });
 
 export type ContactInput = z.infer<typeof contactSchema>;
 
 // ------------------------------------------------------------- helpers
-
-/** SO-01 분기: 예정 여행이 있는 사람에게만 샘플 요청 CTA를 보여준다. */
-export function hasUpcomingTrip(eligStatus: string | null | undefined): boolean {
-  return eligStatus === "planning" || eligStatus === "both";
-}
 
 export function firstIssue(error: z.ZodError): Record<string, string> {
   const out: Record<string, string> = {};

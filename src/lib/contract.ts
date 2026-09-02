@@ -2,66 +2,44 @@
  * CV-001 랜딩·설문 문구와 선택지의 단일 출처.
  *
  * 원본 계약서: project-docs/projects/local-travel-info-marketplace/01-research/cv-001/LANDING-FORM-CONTRACT-KO.md
+ * 결정 근거: 같은 저장소 02-product/QUESTIONS.md 의 Q-052 ~ Q-059
+ *
  * 문구를 바꿀 때는 계약서를 먼저 고치고 여기에 반영한다. 코드에서 임의로 새 문구를 만들지 않는다.
  */
 
-export const LANDING_VERSION = "v1";
+export const LANDING_VERSION = "v2";
 
-/** D-PRIVACY-01 (2026-09-01): 전 저장소 12개월 보관 후 파기, 요청 시 즉시 삭제. */
-export const RETENTION_MONTHS = 12;
+/**
+ * 공개 문의 이메일. 배포 전 실제 주소로 교체한다. (계약서 Manual inquiry handling)
+ * 고객 화면에는 일반 문의 안내와 이 주소만 표시하고, 삭제코드·삭제 링크는 만들지 않는다.
+ */
+export const INQUIRY_EMAIL =
+  process.env.NEXT_PUBLIC_INQUIRY_EMAIL ?? "<SET_BEFORE_RELEASE>";
 
-/** D-SAMPLE-01 (2026-09-01): 장소 3곳 구성, 주당 최대 5건 수동 제작. */
-export const SAMPLE_PLACE_COUNT = 3;
-
-/** D-LOCK-01 (2026-09-01): 해결책 공개 후 문제 응답 잠금. */
-export const LOCK_PROBLEM_AFTER_SOLUTION = true;
-
-/** 운영 문의·삭제 요청을 받을 주소. 배포 전 실제 주소로 교체한다. */
-export const CONTACT_EMAIL =
-  process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "<SET_BEFORE_LAUNCH>";
+/**
+ * 보유기간. (Q-054)
+ * 인원·추첨일·제공기한·샘플 구성은 Founder 운영값이므로 여기에 두지 않는다. (Q-055)
+ */
+export const RETENTION = {
+  partialDays: 30,
+  completedMonths: 12,
+  contactDays: 30,
+} as const;
 
 // ------------------------------------------------------------------ LP-01
 
 export const LANDING = {
   eyebrow: "일본 자유여행 준비 경험 조사",
-  headline: "일본 자유여행,\n어떻게 준비하셨나요?",
-  subhead: "장소·일정·교통을 어떻게 찾고 정하셨는지 3~4분간 들려주세요.",
-
-  /** 참여 대가. 첫 화면에서 스크롤 없이 보이도록 별도 블록으로 뺀다. */
-  rewardLine: {
-    strong: "여행 조건에 맞춘 정보 한 장을 무료로",
-    tail: " 만들어 보내드립니다.",
-    note: "원하시는 분만 설문을 마친 뒤 요청하시면 됩니다.",
-  },
-
-  /**
-   * 첫 질문을 랜딩 히어로에 그대로 노출한다. (`Q-ELIG-01`과 같은 선택지)
-   * 여기서 고른 값은 저장하지 않고 화면에만 반영하며, 저장은 동의 이후에만 한다.
-   */
-  heroQuestion: {
-    label: "먼저, 어디에 해당하시나요?",
-    options: [
-      { value: "recent", label: "최근 12개월 안에 다녀왔어요" },
-      { value: "planning", label: "지금 준비하고 있어요" },
-      { value: "both", label: "둘 다 해당해요" },
-    ],
-    optOut: "저는 해당하지 않아요",
-    optOutMessage:
-      "이번 조사는 최근 12개월 안에 일본 자유여행을 다녀왔거나 3개월 안에 여행을 준비 중인 분을 대상으로 하고 있습니다. 관심 가져주셔서 감사합니다.",
-    note: "선택하시면 바로 시작합니다. 3~4분 · 익명 · 이메일은 샘플 원하시는 분만",
-  },
-
-  /** 언제 어떻게 연락이 가는지 신청 전에 밝힌다. */
-  timeline: "요청 순서와 여행 시기를 함께 보고 9월 중 순차적으로 연락드립니다.",
-
-  finalCta: "일본 여행 준비, 어떻게 하셨는지 들려주세요.",
+  headline: "일본 자유여행,\n실제로 어떻게 준비하셨나요?",
+  body: [
+    "일본 자유여행을 준비하거나 다녀온 과정에서 장소·일정·교통정보를 어떤 순서로 찾고 결정했는지 조사하고 있습니다.",
+    "약 3~4분이 걸립니다. 조사 완료 후 일본 여행을 구체적으로 준비 중인 분은 여행정보 샘플 테스트에 신청할 수 있습니다. 신청자 중 추첨을 통해 선정된 인원에게 실제 샘플을 제공합니다.",
+  ],
   cta: "내 여행 준비 경험 남기기",
-  ctaNote: "3~4분 · 익명 · 이메일은 샘플 원하시는 분만",
+  ctaNote: "약 3~4분 · 이메일은 샘플 신청하시는 분만",
+  participationNote:
+    "일본 여행정보를 찾고 여행을 준비하면서 어떤 경험을 했는지 듣는 조사입니다.",
 
-  /**
-   * 참여 대가는 첫 화면에서 밝힌다. (계약서 LP-01 "What this page explains" 4번)
-   * 단, 샘플의 전체 구성은 여기서 공개하지 않는다. (같은 문서 "must not reveal")
-   */
   reward: {
     title: "왜 무료인가요",
     lead: "아직 파는 물건이 아니기 때문입니다.",
@@ -70,22 +48,13 @@ export const LANDING = {
       "여행 시기와 지역에 맞춰 한 분씩 만듭니다.",
       "직접 확인한 내용과 출처만 담습니다.",
     ],
-    note: "손으로 만들고 있어 모든 요청에 드리지는 못합니다.",
+    note: "신청자 중 추첨으로 선정된 분에게만 제공합니다.",
   },
 
   steps: [
-    {
-      title: "준비 경험 남기기",
-      desc: "어떻게 찾고 정했는지 답합니다.",
-    },
-    {
-      title: "샘플 요청하기",
-      desc: "여행 조건을 남기고 요청합니다.",
-    },
-    {
-      title: "이메일로 받기",
-      desc: "제작이 가능한 분께 보내드립니다.",
-    },
+    { title: "준비 경험 남기기", desc: "어떻게 찾고 정했는지 답합니다." },
+    { title: "샘플 신청하기", desc: "여행 조건을 남기고 신청합니다." },
+    { title: "추첨 후 안내", desc: "선정된 분께 이메일로 알려드립니다." },
   ],
 
   asks: [
@@ -96,9 +65,9 @@ export const LANDING = {
 
   trust: [
     "이름과 전화번호는 묻지 않습니다.",
-    "이메일은 샘플 원하시는 분만 남깁니다.",
-    "응답은 12개월 후 파기합니다.",
-    "광고 발송이나 외부 제공은 없습니다.",
+    "이메일은 샘플 신청하시는 분만 남깁니다.",
+    "중도 이탈 응답은 30일 뒤 파기합니다.",
+    "완료된 응답은 12개월 뒤 파기합니다.",
   ],
 
   founderNote:
@@ -111,20 +80,19 @@ export const LANDING = {
     },
     {
       q: "왜 이메일을 받나요?",
-      a: "샘플을 보내드릴 방법이 필요해서입니다. 설문만 하고 마치실 분은 이메일을 남기지 않으셔도 됩니다.",
+      a: "샘플을 보내드릴 방법이 필요해서입니다. 조사만 하고 마치실 분은 남기지 않으셔도 됩니다.",
     },
     {
-      q: "샘플은 언제 받나요?",
-      a: "한 분씩 직접 만들기 때문에 여행 시기가 가까운 분부터 순서대로 연락드립니다.",
+      q: "신청하면 모두 받나요?",
+      a: "아닙니다. 신청자 중 추첨으로 선정된 분에게만 이메일로 안내드립니다.",
     },
   ],
 
-  qualification:
-    "만 18세 이상이며, 최근 12개월 안에 일본 자유여행을 다녀왔거나 3개월 안에 여행을 계획하고 직접 정보를 찾아본 분을 대상으로 합니다.",
+  finalCta: "일본 여행 준비, 어떻게 하셨는지 들려주세요.",
 
   notice: [
     "정식 서비스가 아니라 검증 단계의 조사입니다.",
-    "조사를 마친 뒤에만 정보 샘플을 요청할 수 있습니다.",
+    "조사를 마친 뒤에만 정보 샘플을 신청할 수 있습니다.",
   ],
 } as const;
 
@@ -135,35 +103,77 @@ export const CONSENT = {
     "이 조사는 일본 자유여행 준비 과정의 실제 정보탐색 행동을 이해하기 위한 것입니다. 정답은 없으며, 서비스에 긍정적인 평가를 요구하지 않습니다.",
     "‘다음’을 누를 때마다 완료한 단계까지 임시 저장됩니다. 중간에 나가면 저장된 부분 응답은 조사 이탈과 질문 개선 분석에만 사용하며, 유효 완료 응답과 구분합니다.",
   ],
-  purpose: "수집 목적: 일본 자유여행 정보탐색 행동 조사와 정보 샘플 제공",
-  items:
-    "수집 항목: 여행 시기·지역, 정보탐색 경험 응답, 접속 환경 정보 (샘플을 요청하는 경우에만 이메일)",
-  retention: `보유 기간: 수집일로부터 ${RETENTION_MONTHS}개월간 보관 후 파기하며, 요청하시면 즉시 삭제합니다.`,
-  refusal:
-    "동의를 거부하실 수 있으며, 이 경우 조사에 참여할 수 없습니다. 참여하지 않아도 어떤 불이익도 없습니다.",
+
+  /** 계약서 Required privacy summary 를 그대로 따른다. */
+  privacy: [
+    {
+      item: "목적",
+      notice: "일본 자유여행 준비 과정의 정보탐색 행동 분석과 조사 문항 개선",
+    },
+    {
+      item: "수집항목",
+      notice:
+        "여행상태·지역·직접 계획범위, 정보결정 사건·정보원·시간·영향·현재 대안, 동의 후 저장되는 페이지 버전·유입 캠페인 코드·기기 유형",
+    },
+    {
+      item: "보유기간",
+      notice:
+        "중도 이탈 부분응답은 마지막 저장 후 30일, 완료된 문제응답은 수집 후 12개월",
+    },
+    {
+      item: "거부권과 영향",
+      notice:
+        "동의하지 않을 수 있으며, 동의하지 않으면 조사 응답을 저장하거나 조사에 참여할 수 없습니다",
+    },
+    {
+      item: "연락처 경계",
+      notice:
+        "이름·전화번호·이메일은 문제조사에서 받지 않습니다. 샘플 신청자의 이메일은 마지막 단계에서 별도 동의를 받고 수집합니다",
+    },
+  ],
+
+  freeTextWarning:
+    "자유서술에는 이름, 전화번호, 예약번호, 정확한 숙소 주소 등 본인이나 다른 사람을 알아볼 수 있는 정보를 적지 마세요.",
+
   consentLabel:
-    "조사 목적, 수집항목, 보유기간과 철회 방법을 확인했고 참여에 동의합니다.",
-  ageLabel: "만 18세 이상입니다.",
+    "조사 목적, 수집항목, 보유기간, 동의 거부 시 영향을 확인했고 참여에 동의합니다.",
+
+  submit: "동의하고 시작하기",
+} as const;
+
+/** 고객 화면 문의 안내. 삭제 전용 문구를 덧붙이지 않는다. (Q-056) */
+export const INQUIRY = {
+  lead: "조사 참여 및 개인정보 처리에 관한 문의는 아래 이메일로 연락해주세요.",
+  email: INQUIRY_EMAIL,
 } as const;
 
 // ------------------------------------------------------------------ SF-01
 
-export const ELIG_STATUS = [
-  { value: "recent", label: "최근 12개월 내 일본 자유여행을 다녀왔다" },
-  { value: "planning", label: "3개월 내 일본 자유여행을 준비 중이다" },
-  { value: "both", label: "둘 다 해당한다" },
-  { value: "none", label: "해당 없음" },
+/** Q-CONTEXT-01. 자격심사가 아니라 사후 분류값이다. (Q-058) */
+export const TRAVEL_EXPERIENCE = [
+  { value: "preparing", label: "현재 준비 중" },
+  { value: "within_1y", label: "다녀온 지 1년 이내" },
+  { value: "y1_to_3", label: "다녀온 지 1~3년" },
+  { value: "over_3y", label: "다녀온 지 3년 초과" },
+  { value: "none", label: "아직 구체적인 준비·경험 없음" },
 ] as const;
 
-export const ELIG_SCOPE = [
+export const TRAVEL_EXPERIENCE_NONE = "none";
+
+/** Q-CONTEXT-02. */
+export const PLANNING_SCOPE = [
   { value: "places", label: "방문 장소" },
   { value: "food", label: "음식점·카페" },
   { value: "stay", label: "숙소" },
   { value: "transit", label: "교통·이동" },
   { value: "itinerary", label: "일정" },
   { value: "booking", label: "예약" },
-  { value: "none", label: "직접 정한 것이 거의 없음" },
+  { value: "few", label: "직접 정한 것이 거의 없음" },
+  { value: "not_yet", label: "아직 해당 없음" },
 ] as const;
+
+/** 구체적인 계획 항목과 동시에 선택할 수 없고, 서로도 함께 고를 수 없다. */
+export const PLANNING_SCOPE_EXCLUSIVE = ["few", "not_yet"] as const;
 
 // ------------------------------------------------------------------ SF-02
 
@@ -238,7 +248,6 @@ export const IMP_OUTCOME = [
   { value: "other", label: "기타" },
 ] as const;
 
-/** "특별히 달라진 것은 없었다"와 동시 선택 불가 (contract SF-04 Validation) */
 export const IMP_CHANGE_OUTCOMES = [
   "changed_place",
   "gave_up",
@@ -261,21 +270,15 @@ export const IMP_TIME = [
 
 export const SOLUTION = {
   headline: "여행 조건에 맞춘 정보를 한 장으로 확인한다면",
-  body: "현재 정식 서비스 출시 전 단계에서, 일부 여행 예정자의 실제 조건을 바탕으로 정보 샘플을 수동으로 제작하고 있습니다.",
-  includes: [
-    `조건에 맞는 장소 약 ${SAMPLE_PLACE_COUNT}곳`,
-    "각 장소를 고른 이유",
-    "확인한 영업·휴무·예약 유의사항",
-    "대중교통 접근과 방문 시기 주의점",
-    "마지막 확인일",
-    "공식·현지 원문 출처 링크",
-  ],
+  body: "조사 완료 후 일본 여행을 구체적으로 준비 중인 분은 여행정보 샘플 테스트에 신청할 수 있습니다. 신청자 중 추첨을 통해 선정된 인원에게 실제 샘플을 제공합니다.",
   boundary:
-    "무료 샘플이며 예약 대행, 전체 일정 제작, 실시간 영업 보장과 현장 대응은 포함하지 않습니다. 신청 내용을 보고 실제 제작이 가능한 일부 요청자에게만 연락드립니다.",
+    "무료 샘플이며 예약 대행, 전체 일정 제작, 실시간 영업 보장과 현장 대응은 포함하지 않습니다. 신청한다고 모두 제공받는 것은 아니며, 추첨으로 선정된 분에게만 이메일로 안내합니다.",
   cta: "내 여행 조건으로 샘플 요청하기",
   secondary: "요청하지 않고 조사 마치기",
   noUpcomingTrip:
     "현재 구체적인 일본 여행계획이 있는 분을 대상으로 샘플을 제작하고 있습니다. 응답은 문제조사 자료로 저장됐으며 여기서 마칠 수 있습니다.",
+  submittedTitle: "제출한 답변",
+  submittedNote: "제출이 완료되어 답변은 수정할 수 없습니다.",
 } as const;
 
 // ------------------------------------------------------------------ SR-01
@@ -298,22 +301,32 @@ export const SMP_FOCUS_MAX = 2;
 export const CONTACT_CONSENT = {
   emailLabel: "샘플을 받을 이메일",
   sampleConsent: "샘플 제공을 위한 이메일 수집·이용에 동의합니다.",
-  followupConsent:
-    "샘플을 받은 뒤 실제 사용 여부를 묻는 짧은 후속 연락에 동의합니다.",
-  retentionNote: `이메일은 샘플 제공과 후속 확인에만 사용하며 수집일로부터 ${RETENTION_MONTHS}개월 후 파기합니다. 광고 발송이나 외부 제공은 하지 않습니다.`,
   submit: "정보 샘플 요청 제출하기",
+
+  /** 계약서 SR-02 Required privacy summary */
+  privacy: [
+    { item: "목적", notice: "샘플 추첨 진행, 선정 결과 안내와 선정자 샘플 제공" },
+    { item: "수집항목", notice: "이메일, 샘플 요청 조건과 필요한 시점" },
+    {
+      item: "보유기간",
+      notice: "미선정자는 추첨일 후 30일, 선정자는 샘플 제공일 후 30일",
+    },
+    {
+      item: "거부권과 영향",
+      notice:
+        "동의하지 않을 수 있으며, 거부하면 샘플 추첨에는 신청할 수 없지만 완료한 문제조사 응답에는 영향이 없습니다",
+    },
+  ],
 } as const;
 
 // ------------------------------------------------------------------ 종료 화면
 
 export const EXIT = {
-  ineligible:
-    "참여해주셔서 감사합니다. 이번 조사는 최근 일본 자유여행을 직접 준비했거나 현재 구체적으로 준비 중인 분을 대상으로 하고 있어 여기서 종료됩니다.",
   surveyOnly:
     "여행 준비 경험을 남겨주셔서 감사합니다. 응답은 일본 자유여행 정보탐색 과정을 분석하는 데 사용됩니다.",
   requested: [
     "요청이 접수됐습니다.",
-    "현재 수동으로 샘플을 제작하고 있어 모든 요청에 제공하지 못할 수 있습니다. 제작 대상으로 선정되면 입력한 이메일로 안내드리겠습니다.",
+    "신청자 중 추첨을 통해 선정된 분에게 입력한 이메일로 안내드리겠습니다. 신청한다고 모두 제공받는 것은 아닙니다.",
   ],
 } as const;
 
@@ -323,4 +336,12 @@ export type Option = { value: string; label: string };
 
 export function labelOf(options: readonly Option[], value: string): string {
   return options.find((o) => o.value === value)?.label ?? value;
+}
+
+export function labelsOf(
+  options: readonly Option[],
+  values: readonly string[] | null | undefined,
+): string {
+  if (!values || values.length === 0) return "—";
+  return values.map((v) => labelOf(options, v)).join(", ");
 }

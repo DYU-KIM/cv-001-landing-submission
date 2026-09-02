@@ -4,15 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CONSENT,
   CONTACT_CONSENT,
-  CONTACT_EMAIL,
-  ELIG_SCOPE,
-  ELIG_STATUS,
   EXIT,
   IMP_OUTCOME,
   IMP_TIME,
   INC_DESCRIPTION_EXAMPLE,
   INC_TIMING,
   INC_TYPE,
+  INQUIRY,
+  PLANNING_SCOPE,
   SMP_FOCUS,
   SMP_FOCUS_MAX,
   SOLUTION,
@@ -22,24 +21,27 @@ import {
   SRC_NEXT_NONE_LABEL,
   SRC_OPTIONS,
   SRC_REASON_MAX,
+  TRAVEL_EXPERIENCE,
   labelOf,
+  labelsOf,
 } from "@/lib/contract";
 import {
   consentSchema,
   contactSchema,
-  eligibilitySchema,
   firstIssue,
   hasUpcomingTrip,
   impactSchema,
   incidentSchema,
   sampleSchema,
   sourcesSchema,
+  travelContextSchema,
 } from "@/lib/validation";
 import {
   Check,
   CheckboxGroup,
   OrderedPicker,
   PrimaryButton,
+  PrivacyTable,
   QuietButton,
   RadioGroup,
   SaveError,
@@ -48,20 +50,13 @@ import {
 } from "./fields";
 
 type Phase = "problem" | "sample";
-type Step =
-  | "consent"
-  | "q"
-  | "solution"
-  | "ineligible"
-  | "doneSurvey"
-  | "doneRequest";
-
-type Group = "eligibility" | "incident" | "sources" | "impact" | "sample" | "contact";
+type Step = "consent" | "q" | "solution" | "doneSurvey" | "doneRequest";
+type Group = "travelContext" | "incident" | "sources" | "impact" | "sample" | "contact";
 
 type QKey =
-  | "eligStatus"
-  | "eligScope"
-  | "eligRegion"
+  | "experience"
+  | "planningScope"
+  | "region"
   | "incType"
   | "incDescription"
   | "incTiming"
@@ -83,10 +78,9 @@ type Screen = { group: Group; key: QKey };
 
 type Values = {
   consent: boolean;
-  age: boolean;
-  eligStatus: string;
-  eligScope: string[];
-  eligRegion: string;
+  experience: string[];
+  planningScope: string[];
+  region: string;
   incType: string;
   incDescription: string;
   incTiming: string;
@@ -104,15 +98,13 @@ type Values = {
   neededBy: string;
   email: string;
   consentSample: boolean;
-  consentFollowup: boolean;
 };
 
 const EMPTY: Values = {
   consent: false,
-  age: false,
-  eligStatus: "",
-  eligScope: [],
-  eligRegion: "",
+  experience: [],
+  planningScope: [],
+  region: "",
   incType: "",
   incDescription: "",
   incTiming: "",
@@ -130,7 +122,6 @@ const EMPTY: Values = {
   neededBy: "",
   email: "",
   consentSample: false,
-  consentFollowup: false,
 };
 
 const DRAFT_KEY = "cv001.draft";
@@ -154,9 +145,9 @@ function screensFor(values: Values, phase: Phase): Screen[] {
   }
 
   const screens: Screen[] = [
-    { group: "eligibility", key: "eligStatus" },
-    { group: "eligibility", key: "eligScope" },
-    { group: "eligibility", key: "eligRegion" },
+    { group: "travelContext", key: "experience" },
+    { group: "travelContext", key: "planningScope" },
+    { group: "travelContext", key: "region" },
     { group: "incident", key: "incType" },
   ];
   if (values.incType && values.incType !== "none")
@@ -180,7 +171,7 @@ function screensFor(values: Values, phase: Phase): Screen[] {
 }
 
 const GROUP_SCHEMA = {
-  eligibility: eligibilitySchema,
+  travelContext: travelContextSchema,
   incident: incidentSchema,
   sources: sourcesSchema,
   impact: impactSchema,
@@ -190,11 +181,11 @@ const GROUP_SCHEMA = {
 
 function groupValues(group: Group, v: Values): Record<string, unknown> {
   switch (group) {
-    case "eligibility":
+    case "travelContext":
       return {
-        eligStatus: v.eligStatus,
-        eligScope: v.eligScope,
-        eligRegion: v.eligRegion,
+        experience: v.experience,
+        planningScope: v.planningScope,
+        region: v.region,
       };
     case "incident":
       return {
@@ -224,12 +215,19 @@ function groupValues(group: Group, v: Values): Record<string, unknown> {
         neededBy: v.neededBy,
       };
     case "contact":
-      return {
-        email: v.email,
-        consentSample: v.consentSample,
-        consentFollowup: v.consentFollowup,
-      };
+      return { email: v.email, consentSample: v.consentSample };
   }
+}
+
+/** 랜딩에서 넘어온 캠페인 코드. 개인 식별값이 아니며 동의 저장 시점에만 함께 보낸다. */
+function utmFromLocation(): Record<string, string> {
+  const params = new URLSearchParams(window.location.search);
+  const utm: Record<string, string> = {};
+  for (const key of ["source", "medium", "campaign", "content"]) {
+    const value = params.get(`utm_${key}`);
+    if (value) utm[key] = value;
+  }
+  return utm;
 }
 
 export default function SurveyFlow() {
@@ -241,12 +239,10 @@ export default function SurveyFlow() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [restored, setRestored] = useState(false);
+  const [locked, setLocked] = useState(false);
   const retry = useRef<(() => void) | null>(null);
 
-  // 같은 탭 새로고침 복원 + 랜딩에서 고른 첫 답변 반영
   useEffect(() => {
-    let next = { ...EMPTY };
-    let restoredStep: Step = "consent";
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
@@ -255,39 +251,53 @@ export default function SurveyFlow() {
           phase: Phase;
           cursor: number;
           values: Values;
+          locked?: boolean;
         };
-        next = { ...EMPTY, ...draft.values };
-        restoredStep = draft.step;
+        setValues({ ...EMPTY, ...draft.values });
         setPhase(draft.phase ?? "problem");
         setCursor(draft.cursor ?? 0);
+        setLocked(!!draft.locked);
+        setStep(draft.step);
       }
     } catch {
       // 복원 실패는 조사 진행을 막지 않는다.
     }
-
-    if (!next.eligStatus) {
-      const picked = new URLSearchParams(window.location.search).get("s");
-      if (picked && ELIG_STATUS.some((o) => o.value === picked)) {
-        next.eligStatus = picked;
-      }
-    }
-
-    setValues(next);
-    setStep(restoredStep);
     setRestored(true);
   }, []);
+
+  // 새로고침 후에도 서버 상태가 잠금이면 문제응답 화면으로 돌아가지 않는다.
+  useEffect(() => {
+    if (!restored || step === "consent") return;
+    let cancelled = false;
+    void fetch("/api/response")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.ok) return;
+        const server = data.response as { problemLocked: boolean };
+        if (server.problemLocked) {
+          setLocked(true);
+          setStep((current) =>
+            current === "q" && phase === "problem" ? "solution" : current,
+          );
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, step, phase]);
 
   useEffect(() => {
     if (!restored) return;
     try {
       sessionStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ step, phase, cursor, values }),
+        JSON.stringify({ step, phase, cursor, values, locked }),
       );
     } catch {
       // 저장 공간이 없어도 진행은 계속한다.
     }
-  }, [step, phase, cursor, values, restored]);
+  }, [step, phase, cursor, values, locked, restored]);
 
   const screens = screensFor(values, phase);
   const current = screens[Math.min(cursor, screens.length - 1)];
@@ -368,42 +378,36 @@ export default function SurveyFlow() {
           />
         ) : null}
 
-        <h1 className="mb-4 text-2xl font-bold">조사 안내와 동의</h1>
+        <h1 className="mb-4 text-2xl font-semibold leading-9">조사 안내와 동의</h1>
         {CONSENT.intro.map((line) => (
-          <p key={line} className="mb-3 text-muted">
+          <p key={line} className="mb-3 text-body">
             {line}
           </p>
         ))}
 
-        <div className="my-6 rounded-2xl bg-soft p-5 text-sm text-muted">
-          <p className="mb-1">{CONSENT.purpose}</p>
-          <p className="mb-1">{CONSENT.items}</p>
-          <p className="mb-1">{CONSENT.retention}</p>
-          <p className="mb-1">{CONSENT.refusal}</p>
-          <p>문의·삭제 요청: {CONTACT_EMAIL}</p>
+        <div className="my-6">
+          <PrivacyTable rows={CONSENT.privacy} />
         </div>
 
-        <div className="mb-4 grid gap-2">
+        <p className="mb-6 rounded-2xl bg-weak p-5 text-sm text-weak-ink">
+          {CONSENT.freeTextWarning}
+        </p>
+
+        <div className="mb-4">
           <Check checked={values.consent} onChange={(v) => set("consent", v)}>
             {CONSENT.consentLabel}
           </Check>
-          <Check checked={values.age} onChange={(v) => set("age", v)}>
-            {CONSENT.ageLabel}
-          </Check>
         </div>
-        {errors.consent || errors.age ? (
+        {errors.consent ? (
           <p role="alert" className="mb-4 text-sm text-danger">
-            {errors.consent ?? errors.age}
+            {errors.consent}
           </p>
         ) : null}
 
         <PrimaryButton
           disabled={saving}
           onClick={() => {
-            const parsed = consentSchema.safeParse({
-              consent: values.consent,
-              age: values.age,
-            });
+            const parsed = consentSchema.safeParse({ consent: values.consent });
             if (!parsed.success) {
               setErrors(firstIssue(parsed.error));
               return;
@@ -413,7 +417,7 @@ export default function SurveyFlow() {
               () =>
                 post("/api/consent", {
                   consent: values.consent,
-                  age: values.age,
+                  utm: utmFromLocation(),
                 }),
               () => {
                 void fetch("/api/event", {
@@ -421,22 +425,22 @@ export default function SurveyFlow() {
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify({ event: "form_started" }),
                 });
-                // 랜딩에서 첫 질문에 답했으면 그 화면은 건너뛴다.
-                setCursor(values.eligStatus ? 1 : 0);
+                setCursor(0);
                 setStep("q");
               },
             );
           }}
         >
-          {saving ? "저장하는 중…" : "동의하고 시작하기"}
+          {saving ? "저장하는 중…" : CONSENT.submit}
         </PrimaryButton>
+
+        <Inquiry />
       </Shell>
     );
   }
 
   // ---------------------------------------------------------------- 종료 화면
 
-  if (step === "ineligible") return <Closing lines={[EXIT.ineligible]} />;
   if (step === "doneSurvey") return <Closing lines={[EXIT.surveyOnly]} />;
   if (step === "doneRequest") return <Closing lines={[...EXIT.requested]} />;
 
@@ -445,8 +449,7 @@ export default function SurveyFlow() {
   if (step === "solution") {
     return (
       <SolutionReveal
-        eligStatus={values.eligStatus}
-        region={values.eligRegion}
+        values={values}
         onRequest={() => {
           void fetch("/api/event", {
             method: "POST",
@@ -473,7 +476,6 @@ export default function SurveyFlow() {
 
     if (!parsed.success) {
       const issues = firstIssue(parsed.error);
-      // 마지막 질문에서는 그룹 전체를, 중간에서는 지금 보이는 질문만 막는다.
       if (isLastOfGroup) {
         setErrors(issues);
         return;
@@ -496,7 +498,6 @@ export default function SurveyFlow() {
           post("/api/contact", {
             email: values.email,
             consentSample: values.consentSample,
-            consentFollowup: values.consentFollowup,
           }),
         () => setStep("doneRequest"),
       );
@@ -524,11 +525,8 @@ export default function SurveyFlow() {
           values: groupValues(current.group, values),
         }),
       (data) => {
-        if (data.next === "ineligible") {
-          setStep("ineligible");
-          return;
-        }
         if (data.next === "solution") {
+          setLocked(true);
           setStep("solution");
           return;
         }
@@ -538,7 +536,7 @@ export default function SurveyFlow() {
   };
 
   const q = QUESTIONS[current.key];
-  const lastLabel =
+  const submitLabel =
     current.group === "contact"
       ? CONTACT_CONSENT.submit
       : current.group === "impact" && isLastOfGroup
@@ -548,15 +546,15 @@ export default function SurveyFlow() {
   return (
     <Shell>
       <div className="mb-8">
-        <div className="mb-2 flex justify-between text-xs text-muted">
-          <span>{phase === "sample" ? "샘플 요청" : "여행 준비 경험"}</span>
+        <div className="mb-2 flex justify-between text-sm text-muted">
+          <span>{phase === "sample" ? "샘플 신청" : "여행 준비 경험"}</span>
           <span>
             {cursor + 1} / {screens.length}
           </span>
         </div>
-        <div className="h-1 w-full rounded bg-soft">
+        <div className="h-1 w-full rounded-full bg-surface">
           <div
-            className="h-1 rounded bg-accent transition-all duration-300"
+            className="h-1 rounded-full bg-accent transition-all duration-300"
             style={{ width: `${((cursor + 1) / screens.length) * 100}%` }}
           />
         </div>
@@ -570,7 +568,7 @@ export default function SurveyFlow() {
         />
       ) : null}
 
-      <h1 className="mb-2 text-[1.6rem] font-bold leading-snug">
+      <h1 className="mb-2 text-2xl font-semibold leading-9">
         {q.label}
         {q.optional ? (
           <span className="ml-2 align-middle text-sm font-normal text-muted">
@@ -578,7 +576,7 @@ export default function SurveyFlow() {
           </span>
         ) : null}
       </h1>
-      {q.hint ? <p className="mb-6 text-muted">{q.hint}</p> : <div className="mb-6" />}
+      {q.hint ? <p className="mb-6 text-body">{q.hint}</p> : <div className="mb-6" />}
 
       <div className="mb-8">{renderInput(current.key, values, set)}</div>
 
@@ -587,15 +585,14 @@ export default function SurveyFlow() {
           {errors[current.key]}
         </p>
       ) : null}
-      {isLastOfGroup &&
-      Object.keys(errors).some((k) => k !== current.key) ? (
+      {isLastOfGroup && Object.keys(errors).some((k) => k !== current.key) ? (
         <p role="alert" className="mb-4 text-sm text-danger">
           {Object.entries(errors).find(([k]) => k !== current.key)?.[1]}
         </p>
       ) : null}
 
       <PrimaryButton disabled={saving} onClick={advance}>
-        {saving ? "저장하는 중…" : lastLabel}
+        {saving ? "저장하는 중…" : submitLabel}
       </PrimaryButton>
 
       {cursor > 0 ? (
@@ -617,14 +614,18 @@ export default function SurveyFlow() {
 // ------------------------------------------------------------------ 질문 문구
 
 const QUESTIONS: Record<QKey, { label: string; hint?: string; optional?: boolean }> = {
-  eligStatus: { label: "현재 어떤 상황에 해당하나요?" },
-  eligScope: {
-    label: "이 여행에서 직접 정했거나 정하고 있는 것은 무엇인가요?",
+  experience: {
+    label: "지금까지의 일본 자유여행 경험은 어떻게 되나요?",
     hint: "해당하는 것을 모두 골라주세요.",
   },
-  eligRegion: {
-    label: "여행한 또는 여행할 일본의 도시·지역은 어디인가요?",
-    hint: "여러 곳이면 함께 적으셔도 됩니다.",
+  planningScope: {
+    label: "그 여행에서 직접 정했거나 정하고 있는 것은 무엇인가요?",
+    hint: "해당하는 것을 모두 골라주세요.",
+  },
+  region: {
+    label: "여행했거나 준비 중인 일본의 도시·지역이 있나요?",
+    hint: "없으면 비워두고 넘어가셔도 됩니다.",
+    optional: true,
   },
   incType: {
     label: "정보를 가장 많이 다시 확인했던 상황은 무엇이었나요?",
@@ -680,28 +681,27 @@ function renderInput(
   set: <K extends keyof Values>(key: K, value: Values[K]) => void,
 ) {
   switch (key) {
-    case "eligStatus":
-      return (
-        <RadioGroup
-          name="eligStatus"
-          options={ELIG_STATUS}
-          value={v.eligStatus}
-          onChange={(x) => set("eligStatus", x)}
-        />
-      );
-    case "eligScope":
+    case "experience":
       return (
         <CheckboxGroup
-          options={ELIG_SCOPE}
-          values={v.eligScope}
-          onChange={(x) => set("eligScope", x)}
+          options={TRAVEL_EXPERIENCE}
+          values={v.experience}
+          onChange={(x) => set("experience", x)}
         />
       );
-    case "eligRegion":
+    case "planningScope":
+      return (
+        <CheckboxGroup
+          options={PLANNING_SCOPE}
+          values={v.planningScope}
+          onChange={(x) => set("planningScope", x)}
+        />
+      );
+    case "region":
       return (
         <TextInput
-          value={v.eligRegion}
-          onChange={(x) => set("eligRegion", x)}
+          value={v.region}
+          onChange={(x) => set("region", x)}
           placeholder="예: 도쿄, 교토 근교"
           max={60}
         />
@@ -853,24 +853,13 @@ function renderInput(
             onChange={(x) => set("email", x)}
             placeholder="name@example.com"
           />
-          <p className="rounded-2xl bg-soft p-4 text-sm text-muted">
-            {CONTACT_CONSENT.retentionNote}
-          </p>
-          <div className="grid gap-2">
-            <Check
-              checked={v.consentSample}
-              onChange={(x) => set("consentSample", x)}
-            >
-              {CONTACT_CONSENT.sampleConsent}
-            </Check>
-            <Check
-              checked={v.consentFollowup}
-              onChange={(x) => set("consentFollowup", x)}
-            >
-              {CONTACT_CONSENT.followupConsent}{" "}
-              <span className="text-muted">(선택)</span>
-            </Check>
-          </div>
+          <PrivacyTable rows={CONTACT_CONSENT.privacy} />
+          <Check
+            checked={v.consentSample}
+            onChange={(x) => set("consentSample", x)}
+          >
+            {CONTACT_CONSENT.sampleConsent}
+          </Check>
         </div>
       );
   }
@@ -880,53 +869,51 @@ function renderInput(
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto w-full max-w-[42rem] px-5 py-10 sm:py-14">
+    <main className="mx-auto w-full max-w-[42rem] px-6 py-8 sm:py-12">
       {children}
     </main>
   );
 }
 
-/** SO-01. 문제 응답이 저장된 뒤에만 열리며, 열람 시점에 문제 답변을 잠근다. */
+function Inquiry() {
+  return (
+    <div className="mt-8 border-t border-line pt-6 text-sm text-muted">
+      <p>{INQUIRY.lead}</p>
+      <p className="mt-1">이메일: {INQUIRY.email}</p>
+    </div>
+  );
+}
+
+/**
+ * SO-01. 문제응답이 저장·잠금된 뒤에만 열린다.
+ * 제출한 답변은 읽기 전용으로만 다시 볼 수 있다. (Q-057)
+ */
 function SolutionReveal({
-  eligStatus,
-  region,
+  values,
   onRequest,
   onFinish,
 }: {
-  eligStatus: string;
-  region: string;
+  values: Values;
   onRequest: () => void;
   onFinish: () => void;
 }) {
+  const [showSubmitted, setShowSubmitted] = useState(false);
+
   useEffect(() => {
     void fetch("/api/solution", { method: "POST" });
   }, []);
 
-  const upcoming = hasUpcomingTrip(eligStatus);
+  const upcoming = hasUpcomingTrip(values.experience);
 
   return (
     <Shell>
       <p className="mb-2 text-sm text-muted">여행 준비 경험이 저장됐습니다.</p>
-      <h1 className="mb-4 text-2xl font-bold">{SOLUTION.headline}</h1>
-      <p className="mb-6 text-muted">{SOLUTION.body}</p>
+      <h1 className="mb-4 text-2xl font-semibold leading-9">{SOLUTION.headline}</h1>
+      <p className="mb-6 text-body">{SOLUTION.body}</p>
 
-      <div className="mb-6 rounded-2xl border border-line p-5">
-        <p className="mb-3 text-sm font-semibold">
-          {region ? `${region} 기준 샘플 구성` : "샘플 구성"}
-        </p>
-        <ul className="grid gap-2 text-sm">
-          {SOLUTION.includes.map((line) => (
-            <li key={line} className="flex gap-2">
-              <span aria-hidden className="text-accent">
-                ·
-              </span>
-              <span>{line}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <p className="mb-8 text-sm text-muted">{SOLUTION.boundary}</p>
+      <p className="mb-8 rounded-2xl bg-surface p-5 text-sm text-body">
+        {SOLUTION.boundary}
+      </p>
 
       {upcoming ? (
         <div className="grid gap-3">
@@ -935,17 +922,61 @@ function SolutionReveal({
         </div>
       ) : (
         <div className="grid gap-3">
-          <p className="rounded-2xl bg-soft p-4 text-sm text-muted">
+          <p className="rounded-2xl bg-weak p-5 text-sm text-weak-ink">
             {SOLUTION.noUpcomingTrip}
           </p>
           <QuietButton onClick={onFinish}>조사 마치기</QuietButton>
         </div>
       )}
 
-      <p className="mt-6 text-center text-xs text-muted">
-        {labelOf(ELIG_STATUS, eligStatus)}
-      </p>
+      <div className="mt-8 border-t border-line pt-6">
+        <button
+          type="button"
+          onClick={() => setShowSubmitted((v) => !v)}
+          className="text-sm text-muted underline underline-offset-4"
+        >
+          {showSubmitted ? "제출한 답변 접기" : SOLUTION.submittedTitle + " 보기"}
+        </button>
+        {showSubmitted ? (
+          <div className="mt-4 grid gap-3 rounded-2xl bg-surface p-5 text-sm">
+            <p className="text-muted">{SOLUTION.submittedNote}</p>
+            <SubmittedRow label="여행 경험">
+              {labelsOf(TRAVEL_EXPERIENCE, values.experience)}
+            </SubmittedRow>
+            <SubmittedRow label="직접 정한 것">
+              {labelsOf(PLANNING_SCOPE, values.planningScope)}
+            </SubmittedRow>
+            <SubmittedRow label="도시·지역">{values.region || "—"}</SubmittedRow>
+            <SubmittedRow label="상황">
+              {values.incType ? labelOf(INC_TYPE, values.incType) : "—"}
+            </SubmittedRow>
+            <SubmittedRow label="첫 정보원">
+              {values.srcFirst ? labelOf(SRC_OPTIONS, values.srcFirst) : "—"}
+            </SubmittedRow>
+            <SubmittedRow label="달라진 것">
+              {labelsOf(IMP_OUTCOME, values.impOutcomes)}
+            </SubmittedRow>
+          </div>
+        ) : null}
+      </div>
+
+      <Inquiry />
     </Shell>
+  );
+}
+
+function SubmittedRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-0.5">
+      <span className="text-muted">{label}</span>
+      <span className="text-ink">{children}</span>
+    </div>
   );
 }
 
@@ -961,16 +992,14 @@ function Closing({ lines }: { lines: string[] }) {
   return (
     <Shell>
       <div className="py-10">
-        <h1 className="mb-4 text-2xl font-bold">{lines[0]}</h1>
+        <h1 className="mb-4 text-2xl font-semibold leading-9">{lines[0]}</h1>
         {lines.slice(1).map((line) => (
-          <p key={line} className="mb-3 text-muted">
+          <p key={line} className="mb-3 text-body">
             {line}
           </p>
         ))}
-        <p className="mt-8 text-sm text-muted">
-          문의·삭제 요청: {CONTACT_EMAIL}
-        </p>
       </div>
+      <Inquiry />
     </Shell>
   );
 }

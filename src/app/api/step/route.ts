@@ -1,28 +1,29 @@
 import { currentResponse, fail, ok, readJson } from "@/lib/api";
-import { logEvent, updateResponse, type SurveyResponse } from "@/lib/store";
 import {
-  eligibilitySchema,
+  completeAndLock,
+  logEvent,
+  updateResponse,
+  type SurveyResponse,
+} from "@/lib/store";
+import {
   firstIssue,
   impactSchema,
   incidentSchema,
-  ineligibleReason,
   sourcesSchema,
+  travelContextSchema,
 } from "@/lib/validation";
 
 /**
  * SF-01 ~ SF-04 단계 저장.
  *
  * 저장 성공 전에는 다음 단계로 보내지 않는다. 응답 본문의 `next`로만 화면을 이동한다.
- * 해결책을 본 뒤에는 문제 답변을 잠근다. (D-LOCK-01)
+ * 최종 저장과 잠금은 하나의 성공 단위이며, 잠긴 뒤에는 어떤 경로로도 원문을 바꿀 수 없다. (Q-057)
+ * 여행 시점·계획 관여도 때문에 종료되는 경로는 없다. (Q-058)
  */
 export async function POST(request: Request) {
   const found = await currentResponse();
   if ("error" in found) return found.error;
   const row = found.row;
-
-  if (row.problem_locked) {
-    return fail(409, "제출이 완료된 응답은 수정할 수 없습니다.");
-  }
 
   const body = (await readJson(request)) as
     | { step?: string; values?: unknown }
@@ -30,9 +31,19 @@ export async function POST(request: Request) {
   const step = body?.step;
   const values = body?.values;
 
+  // 최종 제출의 중복 클릭은 기존 완료 상태를 그대로 돌려준다.
+  if (row.problem_locked) {
+    if (step === "impact") {
+      return ok({ next: "solution", alreadyCompleted: true });
+    }
+    return fail(409, "제출이 완료된 응답은 수정할 수 없습니다.", {
+      code: "PROBLEM_RESPONSE_LOCKED",
+    });
+  }
+
   switch (step) {
-    case "eligibility":
-      return saveEligibility(row, values);
+    case "travelContext":
+      return saveTravelContext(row, values);
     case "incident":
       return saveIncident(row, values);
     case "sources":
@@ -46,7 +57,6 @@ export async function POST(request: Request) {
 
 async function stepSaved(row: SurveyResponse, step: string) {
   await logEvent({
-    sessionId: row.session_id,
     responseId: row.response_id,
     event: "step_completed",
     step,
@@ -55,34 +65,28 @@ async function stepSaved(row: SurveyResponse, step: string) {
 
 // ------------------------------------------------------------------ SF-01
 
-async function saveEligibility(row: SurveyResponse, values: unknown) {
-  const parsed = eligibilitySchema.safeParse(values);
+async function saveTravelContext(row: SurveyResponse, values: unknown) {
+  const parsed = travelContextSchema.safeParse(values);
   if (!parsed.success) {
-    return fail(400, "입력을 확인해주세요.", firstIssue(parsed.error));
+    return fail(400, "입력을 확인해주세요.", { fields: firstIssue(parsed.error) });
   }
-  const reason = ineligibleReason(parsed.data);
 
   await updateResponse(row.response_id, {
-    elig_status: parsed.data.eligStatus,
-    elig_scope: parsed.data.eligScope,
-    elig_region: parsed.data.eligRegion,
-    ineligible_reason: reason,
-    status: reason ? "ineligible" : "partial",
+    travel_experience: parsed.data.experience,
+    planning_scope: parsed.data.planningScope,
+    travel_region: parsed.data.region || null,
+    status: "partial",
     form_started_at: row.form_started_at ?? new Date().toISOString(),
-    last_step: "eligibility",
+    last_step: "travelContext",
   });
 
-  if (reason) {
-    await logEvent({
-      sessionId: row.session_id,
-      responseId: row.response_id,
-      event: "ineligible_completed",
-      params: { reason },
-    });
-    return ok({ next: "ineligible" });
-  }
+  await stepSaved(row, "travelContext");
+  await logEvent({
+    responseId: row.response_id,
+    event: "travel_context_completed",
+  });
 
-  await stepSaved(row, "eligibility");
+  // 여행 시점·계획 관여도와 무관하게 모든 응답자가 SF-02로 간다.
   return ok({ next: "incident" });
 }
 
@@ -91,7 +95,7 @@ async function saveEligibility(row: SurveyResponse, values: unknown) {
 async function saveIncident(row: SurveyResponse, values: unknown) {
   const parsed = incidentSchema.safeParse(values);
   if (!parsed.success) {
-    return fail(400, "입력을 확인해주세요.", firstIssue(parsed.error));
+    return fail(400, "입력을 확인해주세요.", { fields: firstIssue(parsed.error) });
   }
   await updateResponse(row.response_id, {
     inc_type: parsed.data.incType,
@@ -109,7 +113,7 @@ async function saveIncident(row: SurveyResponse, values: unknown) {
 async function saveSources(row: SurveyResponse, values: unknown) {
   const parsed = sourcesSchema.safeParse(values);
   if (!parsed.success) {
-    return fail(400, "입력을 확인해주세요.", firstIssue(parsed.error));
+    return fail(400, "입력을 확인해주세요.", { fields: firstIssue(parsed.error) });
   }
   await updateResponse(row.response_id, {
     src_first: parsed.data.srcFirst,
@@ -127,28 +131,22 @@ async function saveSources(row: SurveyResponse, values: unknown) {
 async function saveImpact(row: SurveyResponse, values: unknown) {
   const parsed = impactSchema.safeParse(values);
   if (!parsed.success) {
-    return fail(400, "입력을 확인해주세요.", firstIssue(parsed.error));
+    return fail(400, "입력을 확인해주세요.", { fields: firstIssue(parsed.error) });
   }
 
-  // 연속 클릭으로 problem_completed_at 이 덮이지 않게 한다.
-  const completedAt = row.problem_completed_at ?? new Date().toISOString();
-
-  await updateResponse(row.response_id, {
+  const { alreadyCompleted } = await completeAndLock(row.response_id, {
     imp_outcomes: parsed.data.impOutcomes,
     imp_outcome_other: parsed.data.impOutcomeOther || null,
     imp_extra_time: parsed.data.impExtraTime || null,
     alt_sufficient_note: parsed.data.altSufficientNote || null,
-    status: "problem_completed",
-    problem_completed_at: completedAt,
-    last_step: "impact",
   });
 
+  if (alreadyCompleted) {
+    return ok({ next: "solution", alreadyCompleted: true });
+  }
+
   await stepSaved(row, "impact");
-  await logEvent({
-    sessionId: row.session_id,
-    responseId: row.response_id,
-    event: "problem_completed",
-  });
+  await logEvent({ responseId: row.response_id, event: "problem_completed" });
 
   return ok({ next: "solution" });
 }

@@ -1,7 +1,10 @@
-import { fail } from "@/lib/api";
+import { checkOperatorKey, fail } from "@/lib/api";
 import {
   listContacts,
   listEvents,
+  listFulfillment,
+  listLandingAggregates,
+  listPurgeLog,
   listResponses,
   listSampleRequests,
 } from "@/lib/store";
@@ -9,10 +12,11 @@ import {
 /**
  * 운영자 전용 CSV 내보내기.
  *
- * `?dataset=responses|samples|contacts|events`
+ * `?dataset=responses|samples|contacts|events|fulfillment|landing|purge`
  * `?key=<EXPORT_KEY>` 또는 `Authorization: Bearer <EXPORT_KEY>`
  *
- * 문제 응답과 연락처는 서로 다른 파일로 내보낸다. 한 파일에 합치지 않는다.
+ * 문제응답과 연락처는 서로 다른 파일로 내보낸다. 한 파일에 합치지 않는다.
+ * 나이 관련 열은 존재하지 않는다.
  */
 
 function toCsv(rows: Record<string, unknown>[]): string {
@@ -33,36 +37,27 @@ function toCsv(rows: Record<string, unknown>[]): string {
   ].join("\n");
 }
 
+const DATASETS: Record<string, () => Promise<unknown[]>> = {
+  responses: listResponses,
+  samples: listSampleRequests,
+  contacts: listContacts,
+  events: listEvents,
+  fulfillment: listFulfillment,
+  landing: listLandingAggregates,
+  purge: listPurgeLog,
+};
+
 export async function GET(request: Request) {
-  const expected = process.env.EXPORT_KEY;
-  if (!expected) return fail(503, "EXPORT_KEY가 설정되지 않았습니다.");
+  const denied = checkOperatorKey(request);
+  if (denied) return denied;
 
-  const url = new URL(request.url);
-  const provided =
-    url.searchParams.get("key") ??
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (provided !== expected) return fail(401, "인증되지 않은 요청입니다.");
+  const dataset = new URL(request.url).searchParams.get("dataset") ?? "responses";
+  const load = DATASETS[dataset];
+  if (!load) return fail(400, "알 수 없는 dataset 입니다.");
 
-  const dataset = url.searchParams.get("dataset") ?? "responses";
-  let rows: Record<string, unknown>[];
-  switch (dataset) {
-    case "responses":
-      rows = (await listResponses()) as unknown as Record<string, unknown>[];
-      break;
-    case "samples":
-      rows = (await listSampleRequests()) as unknown as Record<string, unknown>[];
-      break;
-    case "contacts":
-      rows = (await listContacts()) as unknown as Record<string, unknown>[];
-      break;
-    case "events":
-      rows = (await listEvents()) as unknown as Record<string, unknown>[];
-      break;
-    default:
-      return fail(400, "알 수 없는 dataset 입니다.");
-  }
-
+  const rows = (await load()) as Record<string, unknown>[];
   const today = new Date().toISOString().slice(0, 10);
+
   // 엑셀에서 한글이 깨지지 않도록 BOM을 붙인다.
   return new Response(`﻿${toCsv(rows)}`, {
     headers: {
