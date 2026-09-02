@@ -1099,21 +1099,30 @@ function SolutionReveal({
 
   return (
     <Shell>
-      <p className="mb-2 text-sm text-muted">여행 준비 경험이 저장됐습니다.</p>
-      <h1 className="mb-4 text-2xl font-semibold leading-9">{SOLUTION.headline}</h1>
-      <p className="mb-6 text-body">{SOLUTION.body}</p>
+      <p className="mb-3 text-sm text-muted">{SOLUTION.savedNote}</p>
 
-      <p className="mb-8 rounded-2xl bg-surface p-5 text-sm text-body">
-        {SOLUTION.boundary}
-      </p>
+      <h1 className="mb-4 whitespace-pre-line text-2xl font-semibold leading-9">
+        {SOLUTION.headline}
+      </h1>
+      <p className="mb-8 text-body">{SOLUTION.body}</p>
 
-      {/* 여행 시점으로 신청을 막지 않는다. 예정이 없는 분께는 우선순위만 미리 알린다. */}
-      {upcoming ? null : (
-        <p className="mb-4 rounded-2xl bg-weak p-5 text-sm text-weak-ink">
-          {SOLUTION.noUpcomingTripNote}
-        </p>
-      )}
-
+      {/* 추첨·우선순위·범위 밖 항목을 한 목록으로 모은다. */}
+      <div className="mb-8 rounded-2xl bg-surface p-5">
+        <p className="mb-3 text-sm font-semibold">{SOLUTION.pointsTitle}</p>
+        <ul className="grid gap-2.5 text-sm text-body">
+          {[
+            ...SOLUTION.points,
+            ...(upcoming ? [] : [SOLUTION.noUpcomingPoint]),
+          ].map((line) => (
+            <li key={line} className="flex gap-2">
+              <span aria-hidden className="text-muted">
+                ·
+              </span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="grid gap-3">
         <PrimaryButton onClick={onRequest}>{SOLUTION.cta}</PrimaryButton>
         <QuietButton onClick={onFinish}>{SOLUTION.secondary}</QuietButton>
