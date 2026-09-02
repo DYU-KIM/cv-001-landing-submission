@@ -6,6 +6,9 @@ import { INQUIRY, LANDING } from "@/lib/contract";
  *
  * 구획은 흰색과 #f2f4f6 밴딩, 1px 경계선으로만 나눈다. 그림자는 쓰지 않는다.
  *
+ * 한 사실은 한 번만 말한다. 추첨은 히어로에서, 무료인 이유는 두 번째 밴드에서,
+ * 절차는 세 번째 밴드에서만 다룬다. 같은 말을 반복하는 FAQ·소개 문단은 두지 않는다.
+ *
  * 이 화면은 문제를 단정하거나 정답 후보를 제시하지 않는다.
  * 여행 시점 자격조건(최근 12개월·3개월 내 예정)을 노출하지 않는다. (Q-058)
  * 나이 관련 문구도 두지 않는다. (Q-059)
@@ -14,8 +17,8 @@ import { INQUIRY, LANDING } from "@/lib/contract";
 export default function LandingPage() {
   return (
     <main className="flex-1">
-      {/* 히어로 */}
-      <section className="px-6 pb-8 pt-10 sm:pt-14">
+      {/* 히어로 — 무엇을 묻나 / 무엇을 받나 / 시작 */}
+      <section className="px-6 pb-10 pt-10 sm:pt-14">
         <div className="mx-auto w-full max-w-[42rem]">
           <p className="mb-4 inline-block rounded-md bg-weak px-2.5 py-1.5 text-sm font-semibold text-weak-ink">
             {LANDING.eyebrow}
@@ -27,15 +30,10 @@ export default function LandingPage() {
 
           <p className="mb-6 max-w-[34rem] text-body">{LANDING.subhead}</p>
 
-          <p className="max-w-[34rem] rounded-2xl bg-weak p-5 text-weak-ink">
+          <p className="mb-8 max-w-[34rem] rounded-2xl bg-weak p-5 text-weak-ink">
             {LANDING.offer}
           </p>
-        </div>
-      </section>
 
-      {/* 시작 */}
-      <section className="px-6 pb-8">
-        <div className="mx-auto w-full max-w-[42rem]">
           <StartCta trackView />
         </div>
       </section>
@@ -53,7 +51,6 @@ export default function LandingPage() {
             </li>
           ))}
         </ul>
-        <p className="mt-6 text-sm text-muted">{LANDING.reward.note}</p>
       </Band>
 
       {/* 진행 방식 */}
@@ -77,9 +74,10 @@ export default function LandingPage() {
             </li>
           ))}
         </ol>
+        <p className="mt-4 text-sm text-muted">{LANDING.timeline}</p>
       </Band>
 
-      {/* 여쭤볼 것 */}
+      {/* 무엇을 묻나 */}
       <Band label="질문" surface>
         <h2 className="mb-6 text-2xl font-semibold leading-9 tracking-[-0.01em]">
           이런 것을 여쭤봅니다
@@ -94,44 +92,11 @@ export default function LandingPage() {
             </li>
           ))}
         </ul>
-        <p className="mt-6 text-sm text-muted">
-          정답이 없는 질문입니다. 편하게 답해주시면 됩니다.
-        </p>
-      </Band>
-
-      {/* 개인정보 */}
-      <Band label="개인정보">
-        <h2 className="mb-6 text-2xl font-semibold leading-9 tracking-[-0.01em]">
-          이렇게 다룹니다
-        </h2>
-        <ul className="grid gap-2">
-          {LANDING.trust.map((line) => (
-            <li key={line} className="rounded-2xl bg-surface p-4">
-              {line}
-            </li>
-          ))}
-        </ul>
-      </Band>
-
-      {/* 만드는 사람 */}
-      <Band label="이 조사를 하는 사람" surface>
-        <p className="max-w-[34rem]">{LANDING.founderNote}</p>
-      </Band>
-
-      {/* 자주 묻는 것 */}
-      <Band label="자주 묻는 것">
-        <div className="grid gap-6">
-          {LANDING.faq.map((item) => (
-            <div key={item.q}>
-              <p className="mb-1.5 font-semibold">{item.q}</p>
-              <p className="max-w-[34rem] text-body">{item.a}</p>
-            </div>
-          ))}
-        </div>
+        <p className="mt-6 text-sm text-muted">{LANDING.asksNote}</p>
       </Band>
 
       {/* 마지막 */}
-      <section className="bg-surface px-6 py-8">
+      <section className="border-t border-line px-6 py-10">
         <div className="mx-auto w-full max-w-[42rem]">
           <h2 className="mb-6 text-2xl font-semibold leading-9 tracking-[-0.01em]">
             {LANDING.finalCta}
@@ -140,10 +105,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-line px-6 py-8">
+      <footer className="bg-surface px-6 py-8">
         <div className="mx-auto w-full max-w-[42rem] text-sm text-muted">
-          {LANDING.notice.map((line) => (
-            <p key={line}>· {line}</p>
+          {LANDING.footerNotes.map((line) => (
+            <p key={line} className="mb-1">
+              · {line}
+            </p>
           ))}
           <p className="mt-4">{INQUIRY.lead}</p>
           <p className="mt-1">이메일: {INQUIRY.email}</p>
@@ -164,7 +131,7 @@ function Band({
 }) {
   return (
     <section
-      className={`px-6 py-8 ${surface ? "bg-surface" : "border-t border-line"}`}
+      className={`px-6 py-10 ${surface ? "bg-surface" : "border-t border-line"}`}
     >
       <div className="mx-auto w-full max-w-[42rem]">
         <p className="mb-2 text-sm font-semibold text-muted">{label}</p>
