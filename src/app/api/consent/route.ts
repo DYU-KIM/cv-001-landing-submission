@@ -7,7 +7,7 @@ import {
   getResponseId,
   readUtm,
 } from "@/lib/session";
-import { createResponse, logEvent } from "@/lib/store";
+import { createResponse, getResponse, logEvent } from "@/lib/store";
 import { consentSchema, firstIssue } from "@/lib/validation";
 
 /**
@@ -30,8 +30,12 @@ export async function POST(request: Request) {
   }
 
   // 새로고침·중복 제출로 응답이 여러 개 생기지 않게 한다.
+  // 다만 쿠키만 믿지 않는다. 파기됐거나 삭제된 응답을 가리키는 쿠키를 그대로 돌려주면
+  // 다시 시작해도 같은 죽은 ID를 계속 물고 있어 조사를 끝낼 수 없다.
   const existing = await getResponseId();
-  if (existing) return ok({ responseId: existing });
+  if (existing && (await getResponse(existing))) {
+    return ok({ responseId: existing });
+  }
 
   const row = await createResponse({
     utm: readUtm(body?.utm),

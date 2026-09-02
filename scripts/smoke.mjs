@@ -179,6 +179,29 @@ async function preConsent() {
     stale.status === 401 && staleBody.code === "NO_SESSION",
     JSON.stringify(staleBody),
   );
+
+  // 죽은 쿠키를 들고 다시 시작하면 새 응답이 만들어져야 한다.
+  // 그러지 않으면 같은 죽은 ID 를 계속 물고 있어 조사를 끝낼 수 없다.
+  const deadId = "00000000-0000-0000-0000-000000000000";
+  const restart = await fetch(`${base}/api/consent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `cv_rid=${deadId}` },
+    body: JSON.stringify({ consent: true, utm: {} }),
+  });
+  const restartBody = await restart.json().catch(() => ({}));
+  check(
+    "죽은 쿠키로 다시 시작하면 새 응답 ID 가 발급된다",
+    restart.status === 200 &&
+      !!restartBody.responseId &&
+      restartBody.responseId !== deadId,
+    JSON.stringify(restartBody),
+  );
+  check(
+    "새 응답 ID 가 쿠키로 교체된다",
+    (restart.headers.getSetCookie?.() ?? []).some((c) =>
+      c.startsWith("cv_rid=") && !c.includes(deadId),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------- 3 · 4 · 5 · 6
