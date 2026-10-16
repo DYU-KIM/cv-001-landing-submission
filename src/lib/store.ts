@@ -139,6 +139,11 @@ function supabase(): SupabaseClient | null {
   return cached;
 }
 
+/** 여행 정보 글 저장소가 같은 서버 클라이언트를 쓴다. */
+export function getSupabase(): SupabaseClient | null {
+  return supabase();
+}
+
 export function isDevStore(): boolean {
   return supabase() === null;
 }

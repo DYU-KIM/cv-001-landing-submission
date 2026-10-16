@@ -1,3 +1,4 @@
+import Link from "next/link";
 import StartCta from "@/components/StartCta";
 import { INQUIRY, LANDING } from "@/lib/contract";
 
@@ -92,6 +93,22 @@ export default function LandingPage() {
           ))}
         </ul>
         <p className="mt-6 text-sm text-muted">{LANDING.asksNote}</p>
+      </Band>
+
+      <Band label="여행 정보" surface>
+        <h2 className="mb-3 text-2xl font-semibold leading-9 tracking-[-0.01em]">
+          정리한 일본 여행 정보
+        </h2>
+        <p className="mb-6 text-body">
+          지역별로 확인한 동선과 교통 정보를 등록하고, 목록과 상세에서 다시 보거나
+          고치고 지울 수 있습니다.
+        </p>
+        <Link
+          href="/posts"
+          className="inline-flex h-14 items-center rounded-2xl bg-accent px-5 text-[17px] font-semibold text-accent-ink"
+        >
+          여행 정보 보기
+        </Link>
       </Band>
 
       {/* 마지막 */}

@@ -219,6 +219,46 @@ alter table fulfillment       enable row level security;
 alter table event_log         enable row level security;
 alter table purge_log         enable row level security;
 
+-- ------------------------------------------------------------- 여행 정보 글
+-- 미션 6 CRUD. 설문 응답·연락처와 연결하지 않는다.
+-- 이메일·전화번호 등 개인정보는 애플리케이션에서 거부한다.
+-- RLS는 켜 두되 사용자별 정책은 두지 않는다. service role만 접근하고,
+-- 사용자별 권한은 미션 7에서 적용한다.
+create table if not exists travel_post (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null check (char_length(btrim(title)) between 1 and 80),
+  region      text not null check (region in (
+                'tokyo','osaka','kyoto','fukuoka','sapporo','okinawa','nagoya','other'
+              )),
+  body        text not null check (char_length(btrim(body)) between 1 and 2000),
+  image_path  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists travel_post_created_idx on travel_post (created_at desc);
+create index if not exists travel_post_region_idx on travel_post (region);
+
+drop trigger if exists travel_post_touch on travel_post;
+create trigger travel_post_touch
+  before update on travel_post
+  for each row execute function touch_updated_at();
+
+alter table travel_post enable row level security;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'travel-post-images',
+  'travel-post-images',
+  false,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 -- ------------------------------------------------------------- 차등 자동파기
 -- 계약서 "Retention And Automatic Deletion". 최소 하루 한 번 실행한다.
 --
